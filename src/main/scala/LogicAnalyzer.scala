@@ -68,7 +68,7 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
     /** Memory line of the requested address. Available the cycle after the address is requested
      *  and when the logic analyzer is in the idle state.
       */
-    val respData = Output(UInt(width=dataWidth * lineWidth))
+    val respData = Output(Vec(lineWidth, UInt(width=dataWidth)))
 
     override def cloneType: this.type = (new LogicAnalyzerMemory).asInstanceOf[this.type]
   }
@@ -145,7 +145,7 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
   // Logic Analyzer Logic
   //
 
-  val buffer = SeqMem(memDepth, UInt(width=dataWidth * lineWidth))
+  val buffer = SeqMem(memDepth, Vec(lineWidth, UInt(width=dataWidth)))
   val state = Reg(UInt(width=stateWidth), init=sIdle)
   val nextState = Wire(UInt(width=stateWidth))
   val nextAddress = Reg(UInt(width=samplesWidth))
@@ -202,10 +202,23 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
   }
   nextAddress := nextNextAddress
 
-  // TODO: data sampling control
+  // Line write control
+  val memWriteData = Wire(Vec(lineWidth, UInt(width=dataWidth)))
+  val memWriteControl = Wire(Vec(lineWidth, Bool()))
+  for (i <- 0 until lineWidth) {
+    when (nextAddress % lineWidth.U === i.U) {
+      memWriteData(i) := io.signal.data
+      memWriteControl(i) := true.B
+    } .otherwise {
+      memWriteData(i) := 0.U
+      memWriteControl(i) := false.B
+    }
+  }
+
+
+  // Memory control
   when ((nextState === sRunning && internalValid) || (state === sRunning && nextNextAddress === confNumSamples && confNumSamples =/= 0.U)) {
-    // TODO: WRITE ME
-    buffer.write(io.memory.reqAddr, 0.U)
+    buffer.write(io.memory.reqAddr, memWriteData, memWriteControl)
   } .elsewhen (state === sIdle) {
     io.memory.respData := buffer.read(io.memory.reqAddr)
   }
