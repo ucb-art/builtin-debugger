@@ -50,9 +50,10 @@ trait LogicAnalyzerTestUtils extends PeekPokeTester[LogicAnalyzer] {
   }
 
   def analyzerStep(expectedState: AnalyzerStateType, expectedSampled: Int, valid: Boolean,
-      trigger: Boolean, signal: Int) {
+      trigger: Boolean, signal: Int, expectedOverflow: Boolean = false) {
     expect(c.io.status.state, expectedState.id)
     expect(c.io.status.numSampled, expectedSampled)
+    expect(c.io.status.overflow, expectedOverflow)
     poke(c.io.signal.valid, valid)
     poke(c.io.signal.trigger, trigger)
     poke(c.io.signal.data, signal)
@@ -61,7 +62,7 @@ trait LogicAnalyzerTestUtils extends PeekPokeTester[LogicAnalyzer] {
 }
 
 class LogicAnalyzerTester(val c: LogicAnalyzer) extends PeekPokeTester(c) with LogicAnalyzerTestUtils {
-  // Basic test without valid or trigger
+  // Very very basic test
   arm(true, TriggerMode.None, 4)
   analyzerStep(AnalyzerState.Armed, 0, true, true, 0)
   analyzerStep(AnalyzerState.Running, 1, true, true, 2)
@@ -102,6 +103,114 @@ class LogicAnalyzerTester(val c: LogicAnalyzer) extends PeekPokeTester(c) with L
       List(31)
   ))
 
+  // Test high trigger
+  arm(true, TriggerMode.High, 2)
+  analyzerStep(AnalyzerState.Armed, 0, true, false, 0)
+  analyzerStep(AnalyzerState.Armed, 0, true, false, 0)
+  analyzerStep(AnalyzerState.Armed, 0, true, true, 2)
+  analyzerStep(AnalyzerState.Running, 1, true, false, 4)
+  analyzerStep(AnalyzerState.Idle, 2, true, true, 0)
+  readCompare(List(
+      List(2),
+      List(4)
+  ))
+
+  // Test valid-gated trigger
+  arm(false, TriggerMode.High, 2)
+  analyzerStep(AnalyzerState.Armed, 0, true, false, 0)
+  analyzerStep(AnalyzerState.Armed, 0, false, true, 0)  // invalid trigger discarded
+  analyzerStep(AnalyzerState.Armed, 0, true, true, 7)
+  analyzerStep(AnalyzerState.Running, 1, false, true, 0)
+  analyzerStep(AnalyzerState.Running, 1, false, false, 0)
+  analyzerStep(AnalyzerState.Running, 1, true, false, 14)
+  analyzerStep(AnalyzerState.Idle, 2, true, true, 0)
+  readCompare(List(
+      List(7),
+      List(14)
+  ))
+
+  // Test low trigger
+  arm(true, TriggerMode.Low, 2)
+  analyzerStep(AnalyzerState.Armed, 0, true, true, 0)
+  analyzerStep(AnalyzerState.Armed, 0, true, true, 0)
+  analyzerStep(AnalyzerState.Armed, 0, true, false, 3)
+  analyzerStep(AnalyzerState.Running, 1, true, true, 6)
+  analyzerStep(AnalyzerState.Idle, 2, true, true, 0)
+  readCompare(List(
+      List(3),
+      List(6)
+  ))
+
+  // Test rising edge trigger, starting low
+  arm(true, TriggerMode.Rising, 2)
+  analyzerStep(AnalyzerState.Armed, 0, true, false, 0)
+  analyzerStep(AnalyzerState.Armed, 0, true, false, 0)
+  analyzerStep(AnalyzerState.Armed, 0, true, true, 2)
+  analyzerStep(AnalyzerState.Running, 1, true, false, 4)
+  analyzerStep(AnalyzerState.Idle, 2, true, true, 0)
+  readCompare(List(
+      List(2),
+      List(4)
+  ))
+
+  // Test rising edge trigger, starting high
+  arm(true, TriggerMode.Rising, 2)
+  analyzerStep(AnalyzerState.Armed, 0, true, true, 0)  // wait for false->true before triggering
+  analyzerStep(AnalyzerState.Armed, 0, true, true, 0)
+  analyzerStep(AnalyzerState.Armed, 0, true, false, 0)
+  analyzerStep(AnalyzerState.Armed, 0, true, true, 1)
+  analyzerStep(AnalyzerState.Running, 1, true, false, 5)
+  analyzerStep(AnalyzerState.Idle, 2, true, true, 0)
+  readCompare(List(
+      List(1),
+      List(5)
+  ))
+
+  // Test rising edge trigger, valid-gated
+  arm(false, TriggerMode.Rising, 2)
+  analyzerStep(AnalyzerState.Armed, 0, false, false, 0)  // discard invalid low
+  analyzerStep(AnalyzerState.Armed, 0, true, true, 0)
+  analyzerStep(AnalyzerState.Armed, 0, true, false, 0)  // first true low
+  analyzerStep(AnalyzerState.Armed, 0, false, true, 0)  // discard invalid riding edge
+  analyzerStep(AnalyzerState.Armed, 0, true, true, 2)
+  analyzerStep(AnalyzerState.Running, 1, true, false, 1)
+  analyzerStep(AnalyzerState.Idle, 2, true, true, 0)
+  readCompare(List(
+      List(2),
+      List(1)
+  ))
+
+  // Test continuous mode
+  arm(true, TriggerMode.None, 0)
+  analyzerStep(AnalyzerState.Armed, 0, true, true, 1)
+  analyzerStep(AnalyzerState.Running, 1, true, true, 2)
+  analyzerStep(AnalyzerState.Running, 2, true, true, 3)
+  analyzerStep(AnalyzerState.Running, 3, true, true, 4)
+  analyzerStep(AnalyzerState.Running, 4, true, true, 5)
+  analyzerStep(AnalyzerState.Running, 1, true, true, 6, expectedOverflow=true)
+  analyzerStep(AnalyzerState.Running, 2, true, true, 7, expectedOverflow=true)
+  analyzerStep(AnalyzerState.Running, 3, true, true, 8, expectedOverflow=true)
+  analyzerStep(AnalyzerState.Running, 4, true, true, 9, expectedOverflow=true)
+  analyzerStep(AnalyzerState.Running, 1, true, true, 10, expectedOverflow=true)
+  analyzerStep(AnalyzerState.Running, 2, true, true, 11, expectedOverflow=true)
+  poke(c.io.control.bits.abort, true)
+  poke(c.io.control.valid, true)
+  analyzerStep(AnalyzerState.Running, 3, true, true, 12, expectedOverflow=true)  // sample on abort request cycle
+  analyzerStep(AnalyzerState.Idle, 4, true, true, 0, expectedOverflow=true)
+  readCompare(List(
+      List(9),
+      List(10),
+      List(11),
+      List(12)
+  ))
+
+  // Test numSample = 1 and overflow resets
+  arm(true, TriggerMode.None, 1)
+  analyzerStep(AnalyzerState.Armed, 0, true, true, 10)
+  analyzerStep(AnalyzerState.Idle, 1, true, true, 0)
+  readCompare(List(
+      List(10)
+  ))
 }
 
 class GCDTester extends ChiselFlatSpec {

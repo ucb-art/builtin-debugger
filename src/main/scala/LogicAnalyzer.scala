@@ -149,9 +149,11 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
   val state = Reg(UInt(width=stateWidth), init=sIdle)
   val nextState = Wire(UInt(width=stateWidth))
   val nextAddress = Reg(UInt(width=samplesWidth))
+  val overflow = Reg(Bool())
 
   io.status.state := state
   io.status.numSampled := nextAddress
+  io.status.overflow := overflow
 
   // Logic Analyzer Configuration
   val confValidBypass = Reg(Bool())
@@ -198,7 +200,13 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
   // Memory Interface & Control
   //
   when (sample) {
-    nextAddress := nextAddress + 1.U
+    when (confNumSamples === 0.U && nextAddress === samples.U) {
+      // Overflow in continuous mode
+      nextAddress := 1.U
+      overflow := true.B
+    } .otherwise {
+      nextAddress := nextAddress + 1.U
+    }
   }
 
   // Line write control
@@ -219,7 +227,9 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
    io.memory.respData := buffer.read(io.memory.reqAddr)
   } .otherwise {
     when (sample) {
-      buffer.write(nextAddress, memWriteData, memWriteControl)
+      // In continuous mode, last sample is first sample
+      val actualNextAddress = Mux(nextAddress === samples.U, 0.U, nextAddress)
+      buffer.write(actualNextAddress, memWriteData, memWriteControl)
     }
   }
 
@@ -235,7 +245,8 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
     confTriggerMode := io.control.bits.triggerMode
     confNumSamples := io.control.bits.numSamples
     nextAddress := 0.U
-  } .elsewhen (sample && nextAddress + 1.U === confNumSamples && confNumSamples =/= 0.U) {
+    overflow := false.B
+  } .elsewhen (sample && (nextAddress + 1.U) === confNumSamples && confNumSamples =/= 0.U) {
     // This takes priority over Armed -> Running in the one-sample case
     // TODO: double check this logic
     nextState := sIdle
