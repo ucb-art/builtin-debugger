@@ -313,6 +313,25 @@ class LogicAnalyzerMultilineTester(val c: LogicAnalyzer) extends PeekPokeTester(
       List(10, 11),
       List(12, 4)  // partial line should not be overwritten
   ))
+
+  // Continuous mode partial depth
+  arm(true, TriggerMode.None, 0)
+  analyzerStep(AnalyzerState.Armed, 0, true, true, 1)
+  analyzerStep(AnalyzerState.Running, 1, true, true, 2)
+  analyzerStep(AnalyzerState.Running, 2, true, true, 3)
+  analyzerStep(AnalyzerState.Running, 3, true, true, 4)
+
+  analyzerStep(AnalyzerState.Running, 4, true, true, 5)
+  analyzerStep(AnalyzerState.Running, 1, true, true, 6, expectedOverflow=true)
+  poke(c.io.control.bits.abort, true)
+  poke(c.io.control.valid, true)
+  analyzerStep(AnalyzerState.Running, 2, true, true, 7, expectedOverflow=true)  // sample on abort request cycle
+
+  analyzerStep(AnalyzerState.Idle, 3, true, true, 0, expectedOverflow=true)
+  readCompare(List(
+      List(5, 6),
+      List(7, 4)
+  ))
 }
 
 class GCDTester extends ChiselFlatSpec {
