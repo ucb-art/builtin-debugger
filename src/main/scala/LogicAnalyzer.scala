@@ -28,7 +28,7 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
   val stateWidth = log2Up(3)
 
   // TODO: DRYify
-  val trigNone, trigHigh :: trigLow :: trigRising :: trigFalling = Enum(UInt(), 5)
+  val trigNone :: trigHigh :: trigLow :: trigRising :: trigFalling :: Nil = Enum(UInt(), 5)
   val trigWidth = log2Up(5)
 
   //
@@ -191,16 +191,15 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
   }
   }
 
+  // high means sample this cycle
+  val sample = internalValid && (state === sRunning || (state === sArmed && internalTrigger))
+
   //
   // Memory Interface & Control
   //
-  val nextNextAddress = Wire(UInt(width=samplesWidth))
-  when (state === sRunning && internalValid) {
-    nextNextAddress := nextAddress + 1.U
-  } .otherwise {
-    nextNextAddress := nextAddress
+  when (sample) {
+    nextAddress := nextAddress + 1.U
   }
-  nextAddress := nextNextAddress
 
   // Line write control
   val memWriteData = Wire(Vec(lineWidth, UInt(width=dataWidth)))
@@ -215,12 +214,13 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
     }
   }
 
-
   // Memory control
-  when ((nextState === sRunning && internalValid) || (state === sRunning && nextNextAddress === confNumSamples && confNumSamples =/= 0.U)) {
-    buffer.write(io.memory.reqAddr, memWriteData, memWriteControl)
-  } .elsewhen (state === sIdle) {
-    io.memory.respData := buffer.read(io.memory.reqAddr)
+  when (state === sIdle) {
+   io.memory.respData := buffer.read(io.memory.reqAddr)
+  } .otherwise {
+    when (sample) {
+      buffer.write(nextAddress, memWriteData, memWriteControl)
+    }
   }
 
   //
@@ -235,11 +235,12 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
     confTriggerMode := io.control.bits.triggerMode
     confNumSamples := io.control.bits.numSamples
     nextAddress := 0.U
-  } .elsewhen (state === sArmed && internalTrigger) {
-    nextState := sRunning
-  } .elsewhen (state === sRunning && nextNextAddress === confNumSamples && confNumSamples =/= 0.U) {
+  } .elsewhen (sample && nextAddress + 1.U === confNumSamples && confNumSamples =/= 0.U) {
+    // This takes priority over Armed -> Running in the one-sample case
     // TODO: double check this logic
     nextState := sIdle
+  } .elsewhen (state === sArmed && internalTrigger) {
+    nextState := sRunning
   } .otherwise {
     nextState := state
   }
