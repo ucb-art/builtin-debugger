@@ -148,11 +148,11 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
   val buffer = SeqMem(memDepth, Vec(lineWidth, UInt(width=dataWidth)))
   val state = Reg(UInt(width=stateWidth), init=sIdle)
   val nextState = Wire(UInt(width=stateWidth))
-  val nextAddress = Reg(UInt(width=samplesWidth))
+  val nextSample = Reg(UInt(width=samplesWidth))
   val overflow = Reg(Bool())
 
   io.status.state := state
-  io.status.numSampled := nextAddress
+  io.status.numSampled := nextSample
   io.status.overflow := overflow
 
   // Logic Analyzer Configuration
@@ -200,12 +200,12 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
   // Memory Interface & Control
   //
   when (sample) {
-    when (confNumSamples === 0.U && nextAddress === samples.U) {
+    when (confNumSamples === 0.U && nextSample === samples.U) {
       // Overflow in continuous mode
-      nextAddress := 1.U
+      nextSample := 1.U
       overflow := true.B
     } .otherwise {
-      nextAddress := nextAddress + 1.U
+      nextSample := nextSample + 1.U
     }
   }
 
@@ -213,7 +213,7 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
   val memWriteData = Wire(Vec(lineWidth, UInt(width=dataWidth)))
   val memWriteControl = Wire(Vec(lineWidth, Bool()))
   for (i <- 0 until lineWidth) {
-    when (nextAddress % lineWidth.U === i.U) {
+    when (nextSample % lineWidth.U === i.U) {
       memWriteData(i) := io.signal.data
       memWriteControl(i) := true.B
     } .otherwise {
@@ -228,9 +228,9 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
   } .otherwise {
     when (sample) {
       // In continuous mode, last sample is first sample
-      val actualNextAddress = Mux(nextAddress === samples.U, 0.U, nextAddress)
+      val actualNextSample = Mux(nextSample === samples.U, 0.U, nextSample)
       // Account for line width
-      val memNextAddress = actualNextAddress / lineWidth.U
+      val memNextAddress = actualNextSample / lineWidth.U
       buffer.write(memNextAddress, memWriteData, memWriteControl)
     }
   }
@@ -246,9 +246,9 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
     confValidBypass := io.control.bits.validBypass
     confTriggerMode := io.control.bits.triggerMode
     confNumSamples := io.control.bits.numSamples
-    nextAddress := 0.U
+    nextSample := 0.U
     overflow := false.B
-  } .elsewhen (sample && (nextAddress + 1.U) === confNumSamples && confNumSamples =/= 0.U) {
+  } .elsewhen (sample && (nextSample + 1.U) === confNumSamples && confNumSamples =/= 0.U) {
     // This takes priority over Armed -> Running in the one-sample case
     // TODO: double check this logic
     nextState := sIdle
