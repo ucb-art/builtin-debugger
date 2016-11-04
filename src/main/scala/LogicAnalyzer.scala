@@ -8,20 +8,19 @@ import chisel3.util._
 /** Snooping logic analyzer block.
   *
   * @param dataWidth bit width of the data (signal input to sample)
-  * @param memWidth bit width of memory (for read out), must be an integer multiple of dataWidth
+  * @param lineWidth how many dataWidth bits can be read out at once; width of the internal buffer
   * @param samples number of samples that can be stored in memory, must be an integer multiple of
-  * memWidth / dataWidth
+  * lineWidth
   */
-class LogicAnalyzer(dataWidth: Int, memWidth: Int, samples: Int) extends Module {
-  assert(memWidth % dataWidth == 0)
-  assert(samples % (memWidth / dataWidth) == 0)
+class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module {
+  assert(samples % lineWidth == 0)
 
   //
   // Common constants
   //
 
   val samplesWidth = log2Up(samples + 1)
-  val memDepth = samples / (memWidth / dataWidth)
+  val memDepth = samples * lineWidth
   val reqAddrWidth = log2Up(memDepth)
 
   // TODO: DRYify
@@ -58,8 +57,8 @@ class LogicAnalyzer(dataWidth: Int, memWidth: Int, samples: Int) extends Module 
     *
     * Memory may only be read while the logic analyzer is in the idle state.
     *
-    * The memory is specified as lines of (memWidth/dataWidth) samples each, and the address in
-    * memory for a particular sample is floor(sampleAddr / (memWidth/dataWidth)).
+    * The memory is specified as lines of `lineWidth` samples each, and the address in
+    * memory for a particular sample is floor(sampleAddr / lineWidth).
     * The lowest sample is the least significant dataWidth bits of the returned memory content.
     */
   class LogicAnalyzerMemory extends Bundle {
@@ -69,7 +68,7 @@ class LogicAnalyzer(dataWidth: Int, memWidth: Int, samples: Int) extends Module 
     /** Memory line of the requested address. Available the cycle after the address is requested
      *  and when the logic analyzer is in the idle state.
       */
-    val respData = Output(UInt(width=memWidth))
+    val respData = Output(UInt(width=dataWidth * lineWidth))
 
     override def cloneType: this.type = (new LogicAnalyzerMemory).asInstanceOf[this.type]
   }
@@ -146,7 +145,7 @@ class LogicAnalyzer(dataWidth: Int, memWidth: Int, samples: Int) extends Module 
   // Logic Analyzer Logic
   //
 
-  val buffer = SeqMem(memDepth, UInt(width=memWidth))
+  val buffer = SeqMem(memDepth, UInt(width=dataWidth * lineWidth))
   val state = Reg(UInt(width=stateWidth), init=sIdle)
   val nextState = Wire(UInt(width=stateWidth))
   val nextAddress = Reg(UInt(width=samplesWidth))
