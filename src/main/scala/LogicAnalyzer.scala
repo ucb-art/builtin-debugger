@@ -20,7 +20,7 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
   //
 
   val samplesWidth = log2Up(samples + 1)
-  val memDepth = samples * lineWidth
+  val memDepth = samples / lineWidth
   val reqAddrWidth = log2Up(memDepth)
 
   // TODO: DRYify
@@ -229,7 +229,9 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
     when (sample) {
       // In continuous mode, last sample is first sample
       val actualNextAddress = Mux(nextAddress === samples.U, 0.U, nextAddress)
-      buffer.write(actualNextAddress, memWriteData, memWriteControl)
+      // Account for line width
+      val memNextAddress = actualNextAddress / lineWidth.U
+      buffer.write(memNextAddress, memWriteData, memWriteControl)
     }
   }
 

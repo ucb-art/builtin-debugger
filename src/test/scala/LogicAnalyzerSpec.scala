@@ -27,17 +27,17 @@ trait LogicAnalyzerTestUtils extends PeekPokeTester[LogicAnalyzer] {
     */
   def readCompare(expectedContents: Seq[Seq[BigInt]]) {
     for ((line, i) <- expectedContents.zipWithIndex) {
-      expect(c.io.status.state, AnalyzerState.Idle.id)
+      expect(c.io.status.state, AnalyzerState.Idle.id, "can't read logic analyzer unless in idle")
       poke(c.io.memory.reqAddr, i)
       step(1)
       for ((data, j) <- line.zipWithIndex) {
-        expect(c.io.memory.respData(j), data)
+        expect(c.io.memory.respData(j), data, s"data mismatch, expected $data in line $i position $j, in vector $expectedContents")
       }
     }
   }
 
   def arm(validBypass: Boolean, triggerMode: TriggerModeType, numSamples: Int) {
-    expect(c.io.status.state, AnalyzerState.Idle.id)
+    expect(c.io.status.state, AnalyzerState.Idle.id, "can't arm logic analyzer unless in idle")
     poke(c.io.control.bits.validBypass, validBypass)
     poke(c.io.control.bits.triggerMode, triggerMode.id)
     poke(c.io.control.bits.numSamples, numSamples)
@@ -46,14 +46,14 @@ trait LogicAnalyzerTestUtils extends PeekPokeTester[LogicAnalyzer] {
     poke(c.io.control.valid, 1)
     step(1)
     poke(c.io.control.valid, 0)
-    expect(c.io.status.state, AnalyzerState.Armed.id)
+    expect(c.io.status.state, AnalyzerState.Armed.id, "logic analyzer did not arm")
   }
 
   def analyzerStep(expectedState: AnalyzerStateType, expectedSampled: Int, valid: Boolean,
       trigger: Boolean, signal: Int, expectedOverflow: Boolean = false) {
-    expect(c.io.status.state, expectedState.id)
-    expect(c.io.status.numSampled, expectedSampled)
-    expect(c.io.status.overflow, expectedOverflow)
+    expect(c.io.status.state, expectedState.id, "state mismatch")
+    expect(c.io.status.numSampled, expectedSampled, "sampled mismatch")
+    expect(c.io.status.overflow, expectedOverflow, "overflow mismatch")
     poke(c.io.signal.valid, valid)
     poke(c.io.signal.trigger, trigger)
     poke(c.io.signal.data, signal)
@@ -211,12 +211,124 @@ class LogicAnalyzerTester(val c: LogicAnalyzer) extends PeekPokeTester(c) with L
   readCompare(List(
       List(10)
   ))
+
+  // Test continuous mode, abort on non-aligned buffer index
+  arm(true, TriggerMode.None, 0)
+  analyzerStep(AnalyzerState.Armed, 0, true, true, 1)
+  analyzerStep(AnalyzerState.Running, 1, true, true, 2)
+  analyzerStep(AnalyzerState.Running, 2, true, true, 3)
+  analyzerStep(AnalyzerState.Running, 3, true, true, 4)
+  analyzerStep(AnalyzerState.Running, 4, true, true, 5)
+  analyzerStep(AnalyzerState.Running, 1, true, true, 6, expectedOverflow=true)
+  poke(c.io.control.bits.abort, true)
+  poke(c.io.control.valid, true)
+  analyzerStep(AnalyzerState.Running, 2, true, true, 7, expectedOverflow=true)  // sample on abort request cycle
+  analyzerStep(AnalyzerState.Idle, 3, true, true, 0, expectedOverflow=true)
+  readCompare(List(
+      List(5),
+      List(6),
+      List(7),
+      List(4)
+  ))
+}
+
+class LogicAnalyzerNonalignedDepthTester(val c: LogicAnalyzer) extends PeekPokeTester(c) with LogicAnalyzerTestUtils {
+  // Full depth behavior
+  arm(true, TriggerMode.None, 5)
+  analyzerStep(AnalyzerState.Armed, 0, true, true, 1)
+  analyzerStep(AnalyzerState.Running, 1, true, true, 2)
+  analyzerStep(AnalyzerState.Running, 2, true, true, 3)
+  analyzerStep(AnalyzerState.Running, 3, true, true, 4)
+  analyzerStep(AnalyzerState.Running, 4, true, true, 5)
+  analyzerStep(AnalyzerState.Idle, 5, true, true, 0)
+  readCompare(List(
+      List(1),
+      List(2),
+      List(3),
+      List(4),
+      List(5)
+  ))
+
+  // Partial depth behavior
+  arm(true, TriggerMode.None, 4)
+  analyzerStep(AnalyzerState.Armed, 0, true, true, 10)
+  analyzerStep(AnalyzerState.Running, 1, true, true, 11)
+  analyzerStep(AnalyzerState.Running, 2, true, true, 12)
+  analyzerStep(AnalyzerState.Running, 3, true, true, 13)
+  analyzerStep(AnalyzerState.Idle, 4, true, true, 0)
+  readCompare(List(
+      List(10),
+      List(11),
+      List(12),
+      List(13),
+      List(5)  // should not be overwritten
+  ))
+
+  // Continuous mode behavior
+  arm(true, TriggerMode.None, 0)
+  analyzerStep(AnalyzerState.Armed, 0, true, true, 1)
+  analyzerStep(AnalyzerState.Running, 1, true, true, 2)
+  analyzerStep(AnalyzerState.Running, 2, true, true, 3)
+  analyzerStep(AnalyzerState.Running, 3, true, true, 4)
+  analyzerStep(AnalyzerState.Running, 4, true, true, 5)
+
+  analyzerStep(AnalyzerState.Running, 5, true, true, 6)
+  analyzerStep(AnalyzerState.Running, 1, true, true, 7, expectedOverflow=true)
+  analyzerStep(AnalyzerState.Running, 2, true, true, 8, expectedOverflow=true)
+  analyzerStep(AnalyzerState.Running, 3, true, true, 9, expectedOverflow=true)
+  poke(c.io.control.bits.abort, true)
+  poke(c.io.control.valid, true)
+  analyzerStep(AnalyzerState.Running, 4, true, true, 10, expectedOverflow=true)  // sample on abort request cycle
+
+  analyzerStep(AnalyzerState.Idle, 5, true, true, 0, expectedOverflow=true)
+  readCompare(List(
+      List(6),
+      List(7),
+      List(8),
+      List(9),
+      List(10)
+  ))
+}
+
+class LogicAnalyzerMultilineTester(val c: LogicAnalyzer) extends PeekPokeTester(c) with LogicAnalyzerTestUtils {
+  // Full depth behavior
+  arm(true, TriggerMode.None, 4)
+  analyzerStep(AnalyzerState.Armed, 0, true, true, 1)
+  analyzerStep(AnalyzerState.Running, 1, true, true, 2)
+  analyzerStep(AnalyzerState.Running, 2, true, true, 3)
+  analyzerStep(AnalyzerState.Running, 3, true, true, 4)
+  analyzerStep(AnalyzerState.Idle, 4, true, true, 0)
+  readCompare(List(
+      List(1, 2),
+      List(3, 4)
+  ))
+
+  // Partial depth behavior
+  arm(true, TriggerMode.None, 3)
+  analyzerStep(AnalyzerState.Armed, 0, true, true, 10)
+  analyzerStep(AnalyzerState.Running, 1, true, true, 11)
+  analyzerStep(AnalyzerState.Running, 2, true, true, 12)
+  analyzerStep(AnalyzerState.Idle, 3, true, true, 0)
+  readCompare(List(
+      List(10, 11),
+      List(12, 4)  // partial line should not be overwritten
+  ))
 }
 
 class GCDTester extends ChiselFlatSpec {
-  "Simple one sample/line LogicAnalyzer" should "work" in {
+  "Simple LogicAnalyzer" should "work" in {
     Driver(() => new LogicAnalyzer(8, 1, 4)) {
       c => new LogicAnalyzerTester(c)
+    } should be (true)
+  }
+  "LogicAnalyzer with non-power-of-two samples" should "work" in {
+    Driver(() => new LogicAnalyzer(8, 1, 5)) {
+      c => new LogicAnalyzerNonalignedDepthTester(c)
+    } should be (true)
+  }
+  "LogicAnalyzer with multiple signals per line" should "work" in {
+    Driver(() => new LogicAnalyzer(8, 2, 4)) {
+      c => new LogicAnalyzerMultilineTester(c)
     } should be (true)
   }
 }
