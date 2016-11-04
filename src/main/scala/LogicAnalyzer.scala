@@ -69,7 +69,7 @@ class LogicAnalyzer(dataWidth: Int, memWidth: Int, samples: Int) extends Module 
     /** Memory line of the requested address. Available the cycle after the address is requested
      *  and when the logic analyzer is in the idle state.
       */
-    val respData = Input(UInt(width=memWidth))
+    val respData = Output(UInt(width=memWidth))
 
     override def cloneType: this.type = (new LogicAnalyzerMemory).asInstanceOf[this.type]
   }
@@ -146,7 +146,7 @@ class LogicAnalyzer(dataWidth: Int, memWidth: Int, samples: Int) extends Module 
   // Logic Analyzer Logic
   //
 
-  val buffer = SeqMem(UInt(width=memWidth), memDepth)
+  val buffer = SeqMem(memDepth, UInt(width=memWidth))
   val state = Reg(UInt(width=stateWidth), init=sIdle)
   val nextState = Wire(UInt(width=stateWidth))
   val nextAddress = Reg(UInt(width=samplesWidth))
@@ -203,6 +203,13 @@ class LogicAnalyzer(dataWidth: Int, memWidth: Int, samples: Int) extends Module 
   }
   nextAddress := nextNextAddress
 
+  // TODO: data sampling control
+  when ((nextState === sRunning && internalValid) || (state === sRunning && nextNextAddress === confNumSamples && confNumSamples =/= 0.U)) {
+    // TODO: WRITE ME
+    buffer.write(io.memory.reqAddr, 0.U)
+  } .elsewhen (state === sIdle) {
+    io.memory.respData := buffer.read(io.memory.reqAddr)
+  }
 
   //
   // State Machine
@@ -218,7 +225,8 @@ class LogicAnalyzer(dataWidth: Int, memWidth: Int, samples: Int) extends Module 
     nextAddress := 0.U
   } .elsewhen (state === sArmed && internalTrigger) {
     nextState := sRunning
-  } .elsewhen (state === sRunning && nextNextAddress === confNumSamples && confNumSamples != 0.U) {
+  } .elsewhen (state === sRunning && nextNextAddress === confNumSamples && confNumSamples =/= 0.U) {
+    // TODO: double check this logic
     nextState := sIdle
   } .otherwise {
     nextState := state
