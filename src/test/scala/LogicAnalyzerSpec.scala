@@ -230,6 +230,30 @@ class LogicAnalyzerTester(val c: LogicAnalyzer) extends PeekPokeTester(c) with L
       List(7),
       List(4)
   ))
+
+  // Mid-run abort in non-continuous mode
+  arm(true, TriggerMode.None, 4)
+  analyzerStep(AnalyzerState.Armed, 0, true, true, 1)
+  analyzerStep(AnalyzerState.Running, 1, true, true, 2)
+  poke(c.io.control.bits.abort, true)
+  poke(c.io.control.valid, true)
+  analyzerStep(AnalyzerState.Running, 2, true, true, 3)
+  analyzerStep(AnalyzerState.Idle, 3, true, true, 0)
+  readCompare(List(
+      List(1),
+      List(2),
+      List(3),
+      List(4)  // previous value not overwritten
+  ))
+
+  // Pre-trigger abort
+  arm(true, TriggerMode.High, 4)
+  analyzerStep(AnalyzerState.Armed, 0, true, false, 0)
+  analyzerStep(AnalyzerState.Armed, 0, true, false, 0)
+  poke(c.io.control.bits.abort, true)
+  poke(c.io.control.valid, true)
+  analyzerStep(AnalyzerState.Armed, 0, true, false, 0)
+  analyzerStep(AnalyzerState.Idle, 0, true, true, 0)
 }
 
 class LogicAnalyzerNonalignedDepthTester(val c: LogicAnalyzer) extends PeekPokeTester(c) with LogicAnalyzerTestUtils {
