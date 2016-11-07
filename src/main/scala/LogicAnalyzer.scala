@@ -13,11 +13,10 @@ import chisel3.util._
   * lineWidth
   */
 class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module {
-  assert(samples % lineWidth == 0)
-
   //
   // Common constants
   //
+  assert(samples % lineWidth == 0)
 
   val samplesWidth = log2Up(samples + 1)
   val memDepth = samples / lineWidth
@@ -34,7 +33,6 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
   //
   // IO Definitions
   //
-
   /** Signal input being sampled with optional flow control signals.
     */
   class LogicAnalyzerSignal extends Bundle {
@@ -46,7 +44,7 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
       */
     val valid = Input(Bool())
     /** Optional trigger signal, controlling when to start sampling.
-     *  See triggerBypass and triggerMode in control group.
+     *  See triggerMode in control group.
       */
     val trigger = Input(Bool())
 
@@ -66,14 +64,14 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
     val reqAddr = Input(UInt(width=reqAddrWidth))
 
     /** Memory line of the requested address. Available the cycle after the address is requested
-     *  and when the logic analyzer is in the idle state.
+      * and when the logic analyzer is in the idle state.
       */
     val respData = Output(Vec(lineWidth, UInt(width=dataWidth)))
 
     override def cloneType: this.type = (new LogicAnalyzerMemory).asInstanceOf[this.type]
   }
 
-   /** Logic analyzer control. Ready/Valid gated.
+   /** Logic analyzer control group.
      */
   class LogicAnalyzerControl extends Bundle {
     /** Logic analyzer configuration: ignore the signal valid and sample every clock cycle.
@@ -94,7 +92,7 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
       * overwriting previous samples until stopped through the control abort signal.
       */
     val numSamples = UInt(width=samplesWidth)
-    /** Arm the logic analyzer, latching in the logic analyzer configuration.
+    /** Arm the logic analyzer, latching in the control configuration bits.
       * Only valid in the idle state, transitions to the armed state.
       */
     val arm = Bool()
@@ -142,9 +140,8 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
   val io = IO(new LogicAnalyzerIO)
 
   //
-  // Logic Analyzer Logic
+  // Logic Analyzer State
   //
-
   val buffer = SeqMem(memDepth, Vec(lineWidth, UInt(width=dataWidth)))
   val state = Reg(UInt(width=stateWidth), init=sIdle)
   val nextState = Wire(UInt(width=stateWidth))
@@ -155,13 +152,13 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
   io.status.numSampled := nextSample
   io.status.overflow := overflow
 
-  // Logic Analyzer Configuration
+  // Configuration bits
   val confValidBypass = Reg(Bool())
   val confTriggerMode = Reg(UInt(width=trigWidth))
   val confNumSamples = Reg(UInt(width=samplesWidth))
 
   //
-  // Sampling Control
+  // Trigger Control
   //
   val internalValid = confValidBypass || io.signal.valid  // sample when true
   val lastTrigger = Reg(Bool())  // previous trigger value
