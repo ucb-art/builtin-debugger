@@ -246,7 +246,95 @@ class PatternGeneratorTester(val c: PatternGenerator) extends PeekPokeTester(c) 
 }
 
 class PatternGeneratorNonalignedDepthTester(val c: PatternGenerator) extends PeekPokeTester(c) with PatternGeneratorTestUtils {
+  // Very very basic test
+  arm(true, TriggerMode.None,
+      List(
+        List(1),
+        List(2),
+        List(3),
+        List(4),
+        List(5)
+      ), false)
+  generatorStep(PatternGeneratorState.Armed, None, 0, false, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(2), 2, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(3), 3, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(4), 4, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(5), 5, true, true, true)
+  generatorStep(PatternGeneratorState.Idle, None, 5, false, true, true)
 
+  // Test with partial number of samples
+  arm(true, TriggerMode.None,
+      List(
+        List(1),
+        List(2),
+        List(3),
+        List(4)
+      ), false)
+  generatorStep(PatternGeneratorState.Armed, None, 0, false, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(2), 2, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(3), 3, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(4), 4, true, true, true)
+  generatorStep(PatternGeneratorState.Idle, None, 4, false, true, true)
+
+  // Again, but non-power-of-two
+  arm(true, TriggerMode.None,
+      List(
+        List(1),
+        List(2),
+        List(3)
+      ), false)
+  generatorStep(PatternGeneratorState.Armed, None, 0, false, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(2), 2, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(3), 3, true, true, true)
+  generatorStep(PatternGeneratorState.Idle, None, 3, false, true, true)
+
+  // Continuous, full depth
+  arm(true, TriggerMode.None,
+      List(
+        List(1),
+        List(2),
+        List(3),
+        List(4),
+        List(5)
+      ), true)
+  generatorStep(PatternGeneratorState.Armed, None, 0, false, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(2), 2, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(3), 3, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(4), 4, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(5), 5, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true, expectedOverflow=true)
+  generatorStep(PatternGeneratorState.Running, Some(2), 2, true, true, true, expectedOverflow=true)
+  generatorStep(PatternGeneratorState.Running, Some(3), 3, true, true, true, expectedOverflow=true)
+  generatorStep(PatternGeneratorState.Running, Some(4), 4, true, true, true, expectedOverflow=true)
+  poke(c.io.control.bits.abort, true)
+  poke(c.io.control.valid, true)
+  generatorStep(PatternGeneratorState.Running, Some(5), 5, true, true, true, expectedOverflow=true)
+  generatorStep(PatternGeneratorState.Idle, None, 5, false, true, true, expectedOverflow=true)
+
+  // Continuous, partial depth
+  arm(true, TriggerMode.None,
+      List(
+        List(1),
+        List(2),
+        List(3),
+        List(4)
+      ), true)
+  generatorStep(PatternGeneratorState.Armed, None, 0, false, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(2), 2, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(3), 3, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(4), 4, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true, expectedOverflow=true)
+  generatorStep(PatternGeneratorState.Running, Some(2), 2, true, true, true, expectedOverflow=true)
+  generatorStep(PatternGeneratorState.Running, Some(3), 3, true, true, true, expectedOverflow=true)
+  poke(c.io.control.bits.abort, true)
+  poke(c.io.control.valid, true)
+  generatorStep(PatternGeneratorState.Running, Some(4), 4, true, true, true, expectedOverflow=true)
+  generatorStep(PatternGeneratorState.Idle, None, 4, false, true, true, expectedOverflow=true)
 }
 
 class PatternGeneratorMultilineTester(val c: PatternGenerator) extends PeekPokeTester(c) with PatternGeneratorTestUtils {
