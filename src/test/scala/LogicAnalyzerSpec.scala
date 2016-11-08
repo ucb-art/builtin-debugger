@@ -358,7 +358,7 @@ class LogicAnalyzerMultilineTester(val c: LogicAnalyzer) extends PeekPokeTester(
   ))
 }
 
-class GCDTester extends ChiselFlatSpec {
+class LogicAnalyzerSpec extends ChiselFlatSpec {
   "Simple LogicAnalyzer" should "work" in {
     Driver(() => new LogicAnalyzer(8, 1, 4)) {
       c => new LogicAnalyzerTester(c)

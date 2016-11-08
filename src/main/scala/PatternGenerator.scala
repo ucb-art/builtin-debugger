@@ -146,7 +146,7 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int) extends Mod
   val started = Reg(Bool())
 
   io.status.state := state
-  io.status.numSampled := Mux(started, currSample + 1.U, 0.U)
+  io.status.numSampled := Mux(started, currSample +& 1.U, 0.U)
   io.status.overflow := overflow
 
   // Configuration bits
@@ -202,17 +202,20 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int) extends Mod
       // Overflow in continuous mode
       nextSample := 0.U
       overflow := true.B
-    } .otherwise {
+    } .elsewhen (!lastSample) {
       nextSample := currSample + 1.U
+    } .otherwise {
+      nextSample := currSample
     }
   } .otherwise {
     nextSample := currSample
   }
+  currSample := nextSample
 
   // Memory control
-  val sampleReadLine = Vec(lineWidth, UInt(width=dataWidth))
+  val sampleReadLine = Wire(Vec(lineWidth, UInt(width=dataWidth)))
   when (state === sIdle) {
-    sampleReadLine := 0.U  // TODO: latch previous sample?
+    sampleReadLine := Vec(Seq.fill(lineWidth)(0.U))  // TODO: latch previous sample?
     io.signal.valid := false.B
 
     when (io.memory.valid) {
@@ -221,7 +224,11 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int) extends Mod
     io.memory.ready := true.B
   } .otherwise {
     sampleReadLine := buffer.read(nextSample / lineWidth.U)
-    io.signal.valid := true.B
+    when (state === sRunning) {
+      io.signal.valid := true.B
+    } .otherwise {
+      io.signal.valid := false.B
+    }
 
     io.memory.ready := false.B
   }
@@ -251,7 +258,8 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int) extends Mod
     started := false.B
   } .elsewhen (state === sArmed && internalTrigger) {
     nextState := sRunning
-  } .elsewhen (advance && lastSample) {
+    started := true.B
+  } .elsewhen (advance && lastSample && !confContinuous) {
     nextState := sIdle
   } .otherwise {
     nextState := state
