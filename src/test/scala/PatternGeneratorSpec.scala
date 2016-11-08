@@ -98,6 +98,15 @@ class PatternGeneratorTester(val c: PatternGenerator) extends PeekPokeTester(c) 
   generatorStep(PatternGeneratorState.Running, Some(3), 3, true, true, true)
   generatorStep(PatternGeneratorState.Idle, None, 3, false, true, true)
 
+  // Test with 1 sample
+  arm(true, TriggerMode.None,
+      List(
+        List(1)
+      ), false)
+  generatorStep(PatternGeneratorState.Armed, None, 0, false, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true)
+  generatorStep(PatternGeneratorState.Idle, None, 1, false, true, true)
+
   // Test with ready
   arm(false, TriggerMode.None,
       List(
@@ -115,6 +124,125 @@ class PatternGeneratorTester(val c: PatternGenerator) extends PeekPokeTester(c) 
   generatorStep(PatternGeneratorState.Running, Some(4), 4, true, false, true)  // stall on last cycle
   generatorStep(PatternGeneratorState.Running, Some(4), 4, true, true, true)
   generatorStep(PatternGeneratorState.Idle, None, 4, false, true, true)
+
+  // Basic trigger test
+  arm(false, TriggerMode.High,
+      List(
+        List(1),
+        List(2),
+        List(3),
+        List(4)
+      ), false)
+  generatorStep(PatternGeneratorState.Armed, None, 0, false, false, false)  // disabled trigger
+  generatorStep(PatternGeneratorState.Armed, None, 0, false, true, false)  // ignore ready
+  generatorStep(PatternGeneratorState.Armed, None, 0, false, false, true)  // ignore ready (again)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(2), 2, true, true, false)  // continue with trigger low
+  generatorStep(PatternGeneratorState.Running, Some(3), 3, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(4), 4, true, true, false)
+  generatorStep(PatternGeneratorState.Idle, None, 4, false, true, true)
+
+  // Continuous mode test
+  arm(true, TriggerMode.None,
+      List(
+        List(1),
+        List(2),
+        List(3),
+        List(4)
+      ), true)
+  generatorStep(PatternGeneratorState.Armed, None, 0, false, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(2), 2, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(3), 3, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(4), 4, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true, expectedOverflow=true)
+  generatorStep(PatternGeneratorState.Running, Some(2), 2, true, true, true, expectedOverflow=true)
+  generatorStep(PatternGeneratorState.Running, Some(3), 3, true, true, true, expectedOverflow=true)
+  poke(c.io.control.bits.abort, true)
+  poke(c.io.control.valid, true)
+  generatorStep(PatternGeneratorState.Running, Some(4), 4, true, true, true, expectedOverflow=true)
+  generatorStep(PatternGeneratorState.Idle, None, 4, false, true, true, expectedOverflow=true)
+
+  // Continuous mode test, non-aligned abort
+  arm(true, TriggerMode.None,
+      List(
+        List(1),
+        List(2),
+        List(3),
+        List(4)
+      ), true)
+  generatorStep(PatternGeneratorState.Armed, None, 0, false, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(2), 2, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(3), 3, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(4), 4, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true, expectedOverflow=true)
+  poke(c.io.control.bits.abort, true)
+  poke(c.io.control.valid, true)
+  generatorStep(PatternGeneratorState.Running, Some(2), 2, true, true, true, expectedOverflow=true)
+  generatorStep(PatternGeneratorState.Idle, None, 2, false, true, true, expectedOverflow=true)
+
+  // Continuous mode test, partial depth
+  arm(true, TriggerMode.None,
+      List(
+        List(1),
+        List(2),
+        List(3)
+      ), true)
+  generatorStep(PatternGeneratorState.Armed, None, 0, false, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(2), 2, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(3), 3, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true, expectedOverflow=true)
+  generatorStep(PatternGeneratorState.Running, Some(2), 2, true, true, true, expectedOverflow=true)
+  poke(c.io.control.bits.abort, true)
+  poke(c.io.control.valid, true)
+  generatorStep(PatternGeneratorState.Running, Some(3), 3, true, true, true, expectedOverflow=true)
+  generatorStep(PatternGeneratorState.Idle, None, 3, false, true, true, expectedOverflow=true)
+
+  // Continuous mode test, 1 sample
+  arm(true, TriggerMode.None,
+      List(
+        List(1)
+      ), true)
+  generatorStep(PatternGeneratorState.Armed, None, 0, false, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true, expectedOverflow=true)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true, expectedOverflow=true)
+  poke(c.io.control.bits.abort, true)
+  poke(c.io.control.valid, true)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true, expectedOverflow=true)
+  generatorStep(PatternGeneratorState.Idle, None, 1, false, true, true, expectedOverflow=true)
+
+  // Mid-run abort in non-continuous mode
+  arm(true, TriggerMode.None,
+      List(
+        List(1),
+        List(2),
+        List(3),
+        List(4)
+      ), false)
+  generatorStep(PatternGeneratorState.Armed, None, 0, false, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true)
+  poke(c.io.control.bits.abort, true)
+  poke(c.io.control.valid, true)
+  generatorStep(PatternGeneratorState.Running, Some(2), 2, true, true, true)
+  generatorStep(PatternGeneratorState.Idle, None, 2, false, true, true)
+
+  // Pre-trigger abort
+  arm(true, TriggerMode.High,
+      List(
+        List(1),
+        List(2),
+        List(3),
+        List(4)
+      ), false)
+  generatorStep(PatternGeneratorState.Armed, None, 0, false, true, false)
+  generatorStep(PatternGeneratorState.Armed, None, 0, false, true, false)
+  poke(c.io.control.bits.abort, true)
+  poke(c.io.control.valid, true)
+  generatorStep(PatternGeneratorState.Armed, None, 0, false, true, false)
+  generatorStep(PatternGeneratorState.Idle, None, 0, false, true, true)
 }
 
 class PatternGeneratorSpec extends ChiselFlatSpec {

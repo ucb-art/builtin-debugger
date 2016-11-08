@@ -197,7 +197,7 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int) extends Mod
   // Memory Interface & Control
   //
   val nextSample = Wire(UInt(width=log2Up(samples)))
-  when (advance) {
+  when (advance && !(io.control.bits.abort && io.control.valid)) {
     when (lastSample && confContinuous) {
       // Overflow in continuous mode
       nextSample := 0.U
