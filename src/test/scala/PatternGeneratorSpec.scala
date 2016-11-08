@@ -245,10 +245,87 @@ class PatternGeneratorTester(val c: PatternGenerator) extends PeekPokeTester(c) 
   generatorStep(PatternGeneratorState.Idle, None, 0, false, true, true)
 }
 
+class PatternGeneratorNonalignedDepthTester(val c: PatternGenerator) extends PeekPokeTester(c) with PatternGeneratorTestUtils {
+
+}
+
+class PatternGeneratorMultilineTester(val c: PatternGenerator) extends PeekPokeTester(c) with PatternGeneratorTestUtils {
+  // Full depth
+  arm(true, TriggerMode.None,
+      List(
+        List(1, 2),
+        List(3, 4)
+      ), false)
+  generatorStep(PatternGeneratorState.Armed, None, 0, false, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(2), 2, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(3), 3, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(4), 4, true, true, true)
+  generatorStep(PatternGeneratorState.Idle, None, 4, false, true, true)
+
+  // Partial depth
+  arm(true, TriggerMode.None,
+      List(
+        List(1, 2),
+        List(3)
+      ), false)
+  generatorStep(PatternGeneratorState.Armed, None, 0, false, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(2), 2, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(3), 3, true, true, true)
+  generatorStep(PatternGeneratorState.Idle, None, 3, false, true, true)
+
+  // Continuous, full depth
+  arm(true, TriggerMode.None,
+      List(
+        List(1, 2),
+        List(3, 4)
+      ), true)
+  generatorStep(PatternGeneratorState.Armed, None, 0, false, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(2), 2, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(3), 3, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(4), 4, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true, expectedOverflow=true)
+  generatorStep(PatternGeneratorState.Running, Some(2), 2, true, true, true, expectedOverflow=true)
+  generatorStep(PatternGeneratorState.Running, Some(3), 3, true, true, true, expectedOverflow=true)
+  poke(c.io.control.bits.abort, true)
+  poke(c.io.control.valid, true)
+  generatorStep(PatternGeneratorState.Running, Some(4), 4, true, true, true, expectedOverflow=true)
+  generatorStep(PatternGeneratorState.Idle, None, 4, false, true, true, expectedOverflow=true)
+
+  // Continuous, partial depth
+  arm(true, TriggerMode.None,
+      List(
+        List(1, 2),
+        List(3)
+      ), true)
+  generatorStep(PatternGeneratorState.Armed, None, 0, false, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(2), 2, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(3), 3, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true, expectedOverflow=true)
+  generatorStep(PatternGeneratorState.Running, Some(2), 2, true, true, true, expectedOverflow=true)
+  poke(c.io.control.bits.abort, true)
+  poke(c.io.control.valid, true)
+  generatorStep(PatternGeneratorState.Running, Some(3), 3, true, true, true, expectedOverflow=true)
+  generatorStep(PatternGeneratorState.Idle, None, 3, false, true, true, expectedOverflow=true)
+}
+
 class PatternGeneratorSpec extends ChiselFlatSpec {
   "Simple PatternGenerator" should "work" in {
     Driver(() => new PatternGenerator(8, 1, 4)) {
       c => new PatternGeneratorTester(c)
+    } should be (true)
+  }
+  "PatternGenerator with non-power-of-two samples" should "work" in {
+    Driver(() => new PatternGenerator(8, 1, 5)) {
+      c => new PatternGeneratorNonalignedDepthTester(c)
+    } should be (true)
+  }
+  "PatternGenerator with multiple signals per line" should "work" in {
+    Driver(() => new PatternGenerator(8, 2, 4)) {
+      c => new PatternGeneratorMultilineTester(c)
     } should be (true)
   }
 }
