@@ -56,17 +56,13 @@ trait PatternGeneratorTestUtils extends PeekPokeTester[PatternGenerator] {
       expectedSampled: Int, expectedValid: Boolean, ready: Boolean, trigger: Boolean,
       expectedOverflow: Boolean = false) {
     expect(c.io.status.state, expectedState.id, "state mismatch")
-    System.out.println(peek(c.io.status.state))
     expectedSignal match {
       case Some(expectedSignal) => expect(c.io.signal.data, expectedSignal)
       case None =>
     }
     expect(c.io.signal.valid, expectedValid, "valid mismatch")
-    System.out.println(peek(c.io.signal.valid))
     expect(c.io.status.numSampled, expectedSampled, "sampled mismatch")
-    System.out.println(peek(c.io.status.numSampled))
     expect(c.io.status.overflow, expectedOverflow, "overflow mismatch")
-    System.out.println(peek(c.io.status.overflow))
     poke(c.io.signal.ready, ready)
     poke(c.io.signal.trigger, trigger)
     step(1)
@@ -89,6 +85,36 @@ class PatternGeneratorTester(val c: PatternGenerator) extends PeekPokeTester(c) 
   generatorStep(PatternGeneratorState.Running, Some(4), 4, true, true, true)
   generatorStep(PatternGeneratorState.Idle, None, 4, false, true, true)
 
+  // Test with partial number of samples
+  arm(true, TriggerMode.None,
+      List(
+        List(1),
+        List(2),
+        List(3)
+      ), false)
+  generatorStep(PatternGeneratorState.Armed, None, 0, false, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(2), 2, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(3), 3, true, true, true)
+  generatorStep(PatternGeneratorState.Idle, None, 3, false, true, true)
+
+  // Test with ready
+  arm(false, TriggerMode.None,
+      List(
+        List(1),
+        List(2),
+        List(3),
+        List(4)
+      ), false)
+  generatorStep(PatternGeneratorState.Armed, None, 0, false, false, true)  // trigger independent of ready
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, false, true)  // stall
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, false, true)  // stall
+  generatorStep(PatternGeneratorState.Running, Some(1), 1, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(2), 2, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(3), 3, true, true, true)
+  generatorStep(PatternGeneratorState.Running, Some(4), 4, true, false, true)  // stall on last cycle
+  generatorStep(PatternGeneratorState.Running, Some(4), 4, true, true, true)
+  generatorStep(PatternGeneratorState.Idle, None, 4, false, true, true)
 }
 
 class PatternGeneratorSpec extends ChiselFlatSpec {
