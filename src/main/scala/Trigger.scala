@@ -5,20 +5,50 @@ package debuggers
 import chisel3._
 import chisel3.util._
 
+// An experimental style for enums that can be used both in Scala-land and Chisel-land
+object TriggerModePkg {
+  sealed abstract class TriggerMode(
+    val id: Int
+  ) {
+    def U: UInt = id.U
+  }
+
+  object TriggerMode {
+    implicit def int(x: TriggerMode) = x.id
+    implicit def bigInt(x: TriggerMode):BigInt = x.id
+    // TODO: this could be automatically generated with macros and stuff
+    val all: Set[TriggerMode] = Set(TriggerNone, TriggerHigh, TriggerLow, TriggerRising, TriggerFalling)
+    val width = log2Up(all.size)
+  }
+
+  /** Triggered always high
+    */
+  case object TriggerNone extends TriggerMode(0)
+  /** Triggered high on first cycle where input is valid and high
+    */
+  case object TriggerHigh extends TriggerMode(1)
+  /** Triggered high on the first cycle where input is valid and low
+    */
+  case object TriggerLow extends TriggerMode(2)
+  /** Triggered goes high on first cycle where input is valid and high following a
+    * cycle where input was valid and low
+    */
+  case object TriggerRising extends TriggerMode(3)
+  /** Triggered goes high on first cycle where input is valid and low following a
+    * cycle where input was valid and high
+    */
+  case object TriggerFalling extends TriggerMode(4)
+}
+
+import TriggerModePkg._
+
 /** Common trigger block and utilities.
   */
-class Trigger extends Module {
-  val io = new Bundle {
-    /** Trigger mode:
-      * trigNone: triggered always high.
-      * trigHigh: triggered high on first cycle where input is valid and high.
-      * trigLow: triggered high on the first cycle where input is valid and low.
-      * trigRising: triggered goes high on first cycle where input is valid and high following a
-      * cycle where input was valid and low.
-      * trigFalling: triggered goes high on first cycle where input is valid and low following a
-      * cycle where input was valid and high.
+class TriggerBlock extends Module {
+  val io = IO(new Bundle {
+    /** Trigger mode, see API docs of subtypes of TriggerMode.
       */
-    val config = Input(UInt(width=3))
+    val config = Input(UInt(width=TriggerMode.width))
     /** Whether the module is active or not. A low here acts as a reset for internal state, like
       * required for rising and falling triggers.
       */
@@ -30,5 +60,33 @@ class Trigger extends Module {
       * being high and a reset through high-low-high toggling of active.
       */
     val triggered = Output(Bool())
+  })
+
+  val lastInput = Reg(Valid(Bool()))
+
+  when (io.active) {
+    when (io.input.valid) {
+      lastInput := io.input
+    }
+  } .otherwise {
+    lastInput.valid := false.B
+  }
+
+  switch (io.config) {
+  is (TriggerNone.U) {
+    io.triggered := true.B
+  }
+  is (TriggerHigh.U) {
+    io.triggered := io.input.valid && io.input.bits
+  }
+  is (TriggerLow.U) {
+    io.triggered := io.input.valid && !io.input.bits
+  }
+  is (TriggerRising.U) {
+    io.triggered := lastInput.valid && !lastInput.bits && io.input.valid && io.input.bits
+  }
+  is (TriggerFalling.U) {
+    io.triggered := lastInput.valid && lastInput.bits && io.input.valid && !io.input.bits
+  }
   }
 }

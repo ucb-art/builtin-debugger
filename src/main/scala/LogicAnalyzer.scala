@@ -5,6 +5,8 @@ package debuggers
 import chisel3._
 import chisel3.util._
 
+import TriggerModePkg._
+
 /** Snooping logic analyzer block.
   *
   * @param dataWidth bit width of the data (signal input to sample)
@@ -25,10 +27,6 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
   // TODO: DRYify
   val sIdle :: sArmed :: sRunning :: Nil = Enum(UInt(), 3)
   val stateWidth = log2Up(3)
-
-  // TODO: DRYify
-  val trigNone :: trigHigh :: trigLow :: trigRising :: trigFalling :: Nil = Enum(UInt(), 5)
-  val trigWidth = log2Up(5)
 
   //
   // IO Definitions
@@ -86,7 +84,7 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
       * trigFalling: start sampling on the first valid cycle where trigger is low, following a
       * valid cycle where trigger was high.
       */
-    val triggerMode = UInt(width=trigWidth)
+    val triggerMode = UInt(width=TriggerMode.width)
     /** Logic analyzer configuration: number of samples to take.
       * Zero means to run in continuous mode, wrapping around the memory write address and
       * overwriting previous samples until stopped through the control abort signal.
@@ -154,7 +152,7 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
 
   // Configuration bits
   val confValidBypass = Reg(Bool())
-  val confTriggerMode = Reg(UInt(width=trigWidth))
+  val confTriggerMode = Reg(UInt(width=TriggerMode.width))
   val confNumSamples = Reg(UInt(width=samplesWidth))
 
   //
@@ -171,24 +169,12 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
     lastTriggerValid := false.B
   }
 
-  val internalTrigger = Wire(Bool())  // high means start sampling this cycle
-  switch (confTriggerMode) {
-  is (trigNone) {
-    internalTrigger := internalValid
-  }
-  is (trigHigh) {
-    internalTrigger := internalValid && io.signal.trigger
-  }
-  is (trigLow) {
-    internalTrigger := internalValid && !io.signal.trigger
-  }
-  is (trigRising) {
-    internalTrigger := internalValid && io.signal.trigger && lastTriggerValid && !lastTrigger
-  }
-  is (trigFalling) {
-    internalTrigger := internalValid && !io.signal.trigger && lastTriggerValid && lastTrigger
-  }
-  }
+  val triggerModule = Module(new TriggerBlock)
+  triggerModule.io.config := confTriggerMode
+  triggerModule.io.active := state === sArmed
+  triggerModule.io.input.valid := io.signal.valid
+  triggerModule.io.input.bits := io.signal.trigger
+  val internalTrigger = triggerModule.io.triggered && io.signal.valid
 
   // high means sample this cycle
   val sample = internalValid && (state === sRunning || (state === sArmed && internalTrigger))

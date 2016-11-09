@@ -6,7 +6,10 @@ import Chisel.iotesters.{ChiselFlatSpec, Driver, PeekPokeTester}
 
 import debuggers._
 
-// TODO: dedup with LASpec
+object TriggerMode extends Enumeration {  // TODO: DRYify
+  type TriggerModeType = Value
+  val None, High, Low, Rising, Falling = Value
+}
 import TriggerMode.TriggerModeType
 
 // TODO: dedup with LASpec
