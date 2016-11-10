@@ -6,7 +6,7 @@ import Chisel.iotesters.{ChiselFlatSpec, Driver, PeekPokeTester}
 
 import debuggers._
 
-import TriggerModePkg._
+import TriggerBlock._
 
 object AnalyzerState extends Enumeration {  // TODO: DRYify
   type AnalyzerStateType = Value

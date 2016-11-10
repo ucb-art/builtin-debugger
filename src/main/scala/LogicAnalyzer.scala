@@ -5,8 +5,6 @@ package debuggers
 import chisel3._
 import chisel3.util._
 
-import TriggerModePkg._
-
 /** Snooping logic analyzer block.
   *
   * @param dataWidth bit width of the data (signal input to sample)
@@ -84,7 +82,7 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
       * trigFalling: start sampling on the first valid cycle where trigger is low, following a
       * valid cycle where trigger was high.
       */
-    val triggerMode = UInt(width=TriggerMode.width)
+    val triggerMode = UInt(width=TriggerBlock.TriggerMode.width)
     /** Logic analyzer configuration: number of samples to take.
       * Zero means to run in continuous mode, wrapping around the memory write address and
       * overwriting previous samples until stopped through the control abort signal.
@@ -152,7 +150,7 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
 
   // Configuration bits
   val confValidBypass = Reg(Bool())
-  val confTriggerMode = Reg(UInt(width=TriggerMode.width))
+  val confTriggerMode = Reg(UInt(width=TriggerBlock.TriggerMode.width))
   val confNumSamples = Reg(UInt(width=samplesWidth))
 
   //

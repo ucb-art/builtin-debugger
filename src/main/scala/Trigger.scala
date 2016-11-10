@@ -5,8 +5,7 @@ package debuggers
 import chisel3._
 import chisel3.util._
 
-// An experimental style for enums that can be used both in Scala-land and Chisel-land
-object TriggerModePkg {
+object TriggerBlock {
   sealed abstract class TriggerMode(
     val id: Int
   ) {
@@ -14,8 +13,8 @@ object TriggerModePkg {
   }
 
   object TriggerMode {
-    implicit def int(x: TriggerMode) = x.id
-    implicit def bigInt(x: TriggerMode):BigInt = x.id
+    implicit def toInt(x: TriggerMode) = x.id
+    implicit def toBigInt(x: TriggerMode):BigInt = x.id
     // TODO: this could be automatically generated with macros and stuff
     val all: Set[TriggerMode] = Set(TriggerNone, TriggerHigh, TriggerLow, TriggerRising, TriggerFalling)
     val width = log2Up(all.size)
@@ -38,13 +37,14 @@ object TriggerModePkg {
     * cycle where input was valid and high
     */
   case object TriggerFalling extends TriggerMode(4)
-}
 
-import TriggerModePkg._
+}
 
 /** Common trigger block and utilities.
   */
 class TriggerBlock extends Module {
+  import TriggerBlock._
+
   val io = IO(new Bundle {
     /** Trigger mode, see API docs of subtypes of TriggerMode.
       */
