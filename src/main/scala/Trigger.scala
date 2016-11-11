@@ -6,37 +6,37 @@ import chisel3._
 import chisel3.util._
 
 object TriggerBlock {
-  sealed abstract class TriggerMode(
+  sealed abstract class Mode(
     val id: Int
   ) {
     def U: UInt = id.U
   }
 
-  object TriggerMode {
-    implicit def toInt(x: TriggerMode) = x.id
-    implicit def toBigInt(x: TriggerMode):BigInt = x.id
+  object Mode {
+    implicit def toInt(x: Mode) = x.id
+    implicit def toBigInt(x: Mode):BigInt = x.id
     // TODO: this could be automatically generated with macros and stuff
-    val all: Set[TriggerMode] = Set(TriggerNone, TriggerHigh, TriggerLow, TriggerRising, TriggerFalling)
+    val all: Set[Mode] = Set(Always, High, Low, Rising, Falling)
     val width = log2Up(all.size)
   }
 
   /** Triggered always high
     */
-  case object TriggerNone extends TriggerMode(0)
+  case object Always extends Mode(0)
   /** Triggered high on first cycle where input is valid and high
     */
-  case object TriggerHigh extends TriggerMode(1)
+  case object High extends Mode(1)
   /** Triggered high on the first cycle where input is valid and low
     */
-  case object TriggerLow extends TriggerMode(2)
+  case object Low extends Mode(2)
   /** Triggered goes high on first cycle where input is valid and high following a
     * cycle where input was valid and low
     */
-  case object TriggerRising extends TriggerMode(3)
+  case object Rising extends Mode(3)
   /** Triggered goes high on first cycle where input is valid and low following a
     * cycle where input was valid and high
     */
-  case object TriggerFalling extends TriggerMode(4)
+  case object Falling extends Mode(4)
 
 }
 
@@ -48,7 +48,7 @@ class TriggerBlock extends Module {
   val io = IO(new Bundle {
     /** Trigger mode, see API docs of subtypes of TriggerMode.
       */
-    val config = Input(UInt(width=TriggerMode.width))
+    val config = Input(UInt(width=Mode.width))
     /** Whether the module is active or not. A low here acts as a reset for internal state, like
       * required for rising and falling triggers.
       */
@@ -73,19 +73,19 @@ class TriggerBlock extends Module {
   }
 
   switch (io.config) {
-  is (TriggerNone.U) {
+  is (Always.U) {
     io.triggered := true.B
   }
-  is (TriggerHigh.U) {
+  is (High.U) {
     io.triggered := io.input.valid && io.input.bits
   }
-  is (TriggerLow.U) {
+  is (Low.U) {
     io.triggered := io.input.valid && !io.input.bits
   }
-  is (TriggerRising.U) {
+  is (Rising.U) {
     io.triggered := lastInput.valid && !lastInput.bits && io.input.valid && io.input.bits
   }
-  is (TriggerFalling.U) {
+  is (Falling.U) {
     io.triggered := lastInput.valid && lastInput.bits && io.input.valid && !io.input.bits
   }
   }

@@ -82,7 +82,7 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
       * trigFalling: start sampling on the first valid cycle where trigger is low, following a
       * valid cycle where trigger was high.
       */
-    val triggerMode = UInt(width=TriggerBlock.TriggerMode.width)
+    val triggerMode = UInt(width=TriggerBlock.Mode.width)
     /** Logic analyzer configuration: number of samples to take.
       * Zero means to run in continuous mode, wrapping around the memory write address and
       * overwriting previous samples until stopped through the control abort signal.
@@ -150,7 +150,7 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
 
   // Configuration bits
   val confValidBypass = Reg(Bool())
-  val confTriggerMode = Reg(UInt(width=TriggerBlock.TriggerMode.width))
+  val confTriggerMode = Reg(UInt(width=TriggerBlock.Mode.width))
   val confNumSamples = Reg(UInt(width=samplesWidth))
 
   //

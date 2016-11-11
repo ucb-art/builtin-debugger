@@ -6,8 +6,6 @@ import Chisel.iotesters.{ChiselFlatSpec, Driver, PeekPokeTester}
 
 import debuggers._
 
-import TriggerBlock._
-
 object AnalyzerState extends Enumeration {  // TODO: DRYify
   type AnalyzerStateType = Value
   val Idle, Armed, Running = Value
@@ -32,7 +30,7 @@ trait LogicAnalyzerTestUtils extends PeekPokeTester[LogicAnalyzer] {
     }
   }
 
-  def arm(validBypass: Boolean, triggerMode: TriggerMode, numSamples: Int) {
+  def arm(validBypass: Boolean, triggerMode: TriggerBlock.Mode, numSamples: Int) {
     expect(c.io.status.state, AnalyzerState.Idle.id, "can't arm logic analyzer unless in idle")
     poke(c.io.control.bits.validBypass, validBypass)
     poke(c.io.control.bits.triggerMode, triggerMode)
@@ -59,7 +57,7 @@ trait LogicAnalyzerTestUtils extends PeekPokeTester[LogicAnalyzer] {
 
 class LogicAnalyzerTester(val c: LogicAnalyzer) extends PeekPokeTester(c) with LogicAnalyzerTestUtils {
   // Very very basic test
-  arm(true, TriggerNone, 4)
+  arm(true, TriggerBlock.Always, 4)
   analyzerStep(AnalyzerState.Armed, 0, true, true, 0)
   analyzerStep(AnalyzerState.Running, 1, true, true, 2)
   analyzerStep(AnalyzerState.Running, 2, true, true, 3)
@@ -73,7 +71,7 @@ class LogicAnalyzerTester(val c: LogicAnalyzer) extends PeekPokeTester(c) with L
   ))
 
   // Test with low numSampled
-  arm(true, TriggerNone, 2)
+  arm(true, TriggerBlock.Always, 2)
   analyzerStep(AnalyzerState.Armed, 0, true, true, 7)
   analyzerStep(AnalyzerState.Running, 1, true, true, 42)
   analyzerStep(AnalyzerState.Idle, 2, true, true, 0)
@@ -85,7 +83,7 @@ class LogicAnalyzerTester(val c: LogicAnalyzer) extends PeekPokeTester(c) with L
   ))
 
   // Test with valid
-  arm(false, TriggerNone, 3)
+  arm(false, TriggerBlock.Always, 3)
   analyzerStep(AnalyzerState.Armed, 0, false, true, 0)
   analyzerStep(AnalyzerState.Armed, 0, true, true, 8)  // test trigger gated by Valid
   analyzerStep(AnalyzerState.Running, 1, false, true, 0)
@@ -100,7 +98,7 @@ class LogicAnalyzerTester(val c: LogicAnalyzer) extends PeekPokeTester(c) with L
   ))
 
   // Test high trigger
-  arm(true, TriggerHigh, 2)
+  arm(true, TriggerBlock.High, 2)
   analyzerStep(AnalyzerState.Armed, 0, true, false, 0)
   analyzerStep(AnalyzerState.Armed, 0, true, false, 0)
   analyzerStep(AnalyzerState.Armed, 0, true, true, 2)
@@ -112,7 +110,7 @@ class LogicAnalyzerTester(val c: LogicAnalyzer) extends PeekPokeTester(c) with L
   ))
 
   // Test valid-gated trigger
-  arm(false, TriggerHigh, 2)
+  arm(false, TriggerBlock.High, 2)
   analyzerStep(AnalyzerState.Armed, 0, true, false, 0)
   analyzerStep(AnalyzerState.Armed, 0, false, true, 0)  // invalid trigger discarded
   analyzerStep(AnalyzerState.Armed, 0, true, true, 7)
@@ -126,7 +124,7 @@ class LogicAnalyzerTester(val c: LogicAnalyzer) extends PeekPokeTester(c) with L
   ))
 
   // Test low trigger
-  arm(true, TriggerLow, 2)
+  arm(true, TriggerBlock.Low, 2)
   analyzerStep(AnalyzerState.Armed, 0, true, true, 0)
   analyzerStep(AnalyzerState.Armed, 0, true, true, 0)
   analyzerStep(AnalyzerState.Armed, 0, true, false, 3)
@@ -138,7 +136,7 @@ class LogicAnalyzerTester(val c: LogicAnalyzer) extends PeekPokeTester(c) with L
   ))
 
   // Test rising edge trigger, starting low
-  arm(true, TriggerRising, 2)
+  arm(true, TriggerBlock.Rising, 2)
   analyzerStep(AnalyzerState.Armed, 0, true, false, 0)
   analyzerStep(AnalyzerState.Armed, 0, true, false, 0)
   analyzerStep(AnalyzerState.Armed, 0, true, true, 2)
@@ -150,7 +148,7 @@ class LogicAnalyzerTester(val c: LogicAnalyzer) extends PeekPokeTester(c) with L
   ))
 
   // Test rising edge trigger, starting high
-  arm(true, TriggerRising, 2)
+  arm(true, TriggerBlock.Rising, 2)
   analyzerStep(AnalyzerState.Armed, 0, true, true, 0)  // wait for false->true before triggering
   analyzerStep(AnalyzerState.Armed, 0, true, true, 0)
   analyzerStep(AnalyzerState.Armed, 0, true, false, 0)
@@ -163,7 +161,7 @@ class LogicAnalyzerTester(val c: LogicAnalyzer) extends PeekPokeTester(c) with L
   ))
 
   // Test rising edge trigger, valid-gated
-  arm(false, TriggerRising, 2)
+  arm(false, TriggerBlock.Rising, 2)
   analyzerStep(AnalyzerState.Armed, 0, false, false, 0)  // discard invalid low
   analyzerStep(AnalyzerState.Armed, 0, true, true, 0)
   analyzerStep(AnalyzerState.Armed, 0, true, false, 0)  // first true low
@@ -177,7 +175,7 @@ class LogicAnalyzerTester(val c: LogicAnalyzer) extends PeekPokeTester(c) with L
   ))
 
   // Test continuous mode
-  arm(true, TriggerNone, 0)
+  arm(true, TriggerBlock.Always, 0)
   analyzerStep(AnalyzerState.Armed, 0, true, true, 1)
   analyzerStep(AnalyzerState.Running, 1, true, true, 2)
   analyzerStep(AnalyzerState.Running, 2, true, true, 3)
@@ -201,7 +199,7 @@ class LogicAnalyzerTester(val c: LogicAnalyzer) extends PeekPokeTester(c) with L
   ))
 
   // Test numSample = 1 and overflow resets
-  arm(true, TriggerNone, 1)
+  arm(true, TriggerBlock.Always, 1)
   analyzerStep(AnalyzerState.Armed, 0, true, true, 10)
   analyzerStep(AnalyzerState.Idle, 1, true, true, 0)
   readCompare(List(
@@ -209,7 +207,7 @@ class LogicAnalyzerTester(val c: LogicAnalyzer) extends PeekPokeTester(c) with L
   ))
 
   // Test continuous mode, abort on non-aligned buffer index
-  arm(true, TriggerNone, 0)
+  arm(true, TriggerBlock.Always, 0)
   analyzerStep(AnalyzerState.Armed, 0, true, true, 1)
   analyzerStep(AnalyzerState.Running, 1, true, true, 2)
   analyzerStep(AnalyzerState.Running, 2, true, true, 3)
@@ -228,7 +226,7 @@ class LogicAnalyzerTester(val c: LogicAnalyzer) extends PeekPokeTester(c) with L
   ))
 
   // Mid-run abort in non-continuous mode
-  arm(true, TriggerNone, 4)
+  arm(true, TriggerBlock.Always, 4)
   analyzerStep(AnalyzerState.Armed, 0, true, true, 1)
   analyzerStep(AnalyzerState.Running, 1, true, true, 2)
   poke(c.io.control.bits.abort, true)
@@ -243,7 +241,7 @@ class LogicAnalyzerTester(val c: LogicAnalyzer) extends PeekPokeTester(c) with L
   ))
 
   // Pre-trigger abort
-  arm(true, TriggerHigh, 4)
+  arm(true, TriggerBlock.High, 4)
   analyzerStep(AnalyzerState.Armed, 0, true, false, 0)
   analyzerStep(AnalyzerState.Armed, 0, true, false, 0)
   poke(c.io.control.bits.abort, true)
@@ -254,7 +252,7 @@ class LogicAnalyzerTester(val c: LogicAnalyzer) extends PeekPokeTester(c) with L
 
 class LogicAnalyzerNonalignedDepthTester(val c: LogicAnalyzer) extends PeekPokeTester(c) with LogicAnalyzerTestUtils {
   // Full depth behavior
-  arm(true, TriggerNone, 5)
+  arm(true, TriggerBlock.Always, 5)
   analyzerStep(AnalyzerState.Armed, 0, true, true, 1)
   analyzerStep(AnalyzerState.Running, 1, true, true, 2)
   analyzerStep(AnalyzerState.Running, 2, true, true, 3)
@@ -270,7 +268,7 @@ class LogicAnalyzerNonalignedDepthTester(val c: LogicAnalyzer) extends PeekPokeT
   ))
 
   // Partial depth behavior
-  arm(true, TriggerNone, 4)
+  arm(true, TriggerBlock.Always, 4)
   analyzerStep(AnalyzerState.Armed, 0, true, true, 10)
   analyzerStep(AnalyzerState.Running, 1, true, true, 11)
   analyzerStep(AnalyzerState.Running, 2, true, true, 12)
@@ -285,7 +283,7 @@ class LogicAnalyzerNonalignedDepthTester(val c: LogicAnalyzer) extends PeekPokeT
   ))
 
   // Continuous mode behavior
-  arm(true, TriggerNone, 0)
+  arm(true, TriggerBlock.Always, 0)
   analyzerStep(AnalyzerState.Armed, 0, true, true, 1)
   analyzerStep(AnalyzerState.Running, 1, true, true, 2)
   analyzerStep(AnalyzerState.Running, 2, true, true, 3)
@@ -312,7 +310,7 @@ class LogicAnalyzerNonalignedDepthTester(val c: LogicAnalyzer) extends PeekPokeT
 
 class LogicAnalyzerMultilineTester(val c: LogicAnalyzer) extends PeekPokeTester(c) with LogicAnalyzerTestUtils {
   // Full depth behavior
-  arm(true, TriggerNone, 4)
+  arm(true, TriggerBlock.Always, 4)
   analyzerStep(AnalyzerState.Armed, 0, true, true, 1)
   analyzerStep(AnalyzerState.Running, 1, true, true, 2)
   analyzerStep(AnalyzerState.Running, 2, true, true, 3)
@@ -324,7 +322,7 @@ class LogicAnalyzerMultilineTester(val c: LogicAnalyzer) extends PeekPokeTester(
   ))
 
   // Partial depth behavior
-  arm(true, TriggerNone, 3)
+  arm(true, TriggerBlock.Always, 3)
   analyzerStep(AnalyzerState.Armed, 0, true, true, 10)
   analyzerStep(AnalyzerState.Running, 1, true, true, 11)
   analyzerStep(AnalyzerState.Running, 2, true, true, 12)
@@ -335,7 +333,7 @@ class LogicAnalyzerMultilineTester(val c: LogicAnalyzer) extends PeekPokeTester(
   ))
 
   // Continuous mode full depth
-  arm(true, TriggerNone, 0)
+  arm(true, TriggerBlock.Always, 0)
   analyzerStep(AnalyzerState.Armed, 0, true, true, 1)
   analyzerStep(AnalyzerState.Running, 1, true, true, 2)
   analyzerStep(AnalyzerState.Running, 2, true, true, 3)
@@ -355,7 +353,7 @@ class LogicAnalyzerMultilineTester(val c: LogicAnalyzer) extends PeekPokeTester(
   ))
 
   // Continuous mode partial depth
-  arm(true, TriggerNone, 0)
+  arm(true, TriggerBlock.Always, 0)
   analyzerStep(AnalyzerState.Armed, 0, true, true, 1)
   analyzerStep(AnalyzerState.Running, 1, true, true, 2)
   analyzerStep(AnalyzerState.Running, 2, true, true, 3)
