@@ -5,6 +5,15 @@ package debuggers
 import chisel3._
 import chisel3.util._
 
+/** Trigger modes (shorthand for trigger value and valid during testing)
+  */
+sealed trait TriggerState
+case object THigh extends TriggerState
+case object TLow extends TriggerState
+case object TInvalid extends TriggerState
+case object TInvHigh extends TriggerState
+case object TInvLow extends TriggerState
+
 object TriggerBlock {
   sealed abstract class Mode(
     val id: Int
