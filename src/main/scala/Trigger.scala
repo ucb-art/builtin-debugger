@@ -20,7 +20,7 @@ object TriggerBlock {
     val width = log2Up(all.size)
   }
 
-  /** Triggered always high
+  /** Triggered always high, regardless of valid
     */
   case object Always extends Mode(0)
   /** Triggered high on first cycle where input is valid and high

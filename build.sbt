@@ -4,6 +4,8 @@ version := "0"
 
 scalaVersion := "2.11.7"
 
+// scalacOptions := Seq("-deprecation")
+
 resolvers ++= Seq(
   Resolver.sonatypeRepo("snapshots"),
   Resolver.sonatypeRepo("releases")

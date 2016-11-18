@@ -11,8 +11,11 @@ import chisel3.util._
   * @param lineWidth how many dataWidth bits can be read out at once; width of the internal buffer
   * @param samples number of samples that can be stored in memory, must be an integer multiple of
   * lineWidth
+  * @param combinationalTrigger is true, start sampling on the trigger clock cycle (and may result
+  * in a longer combinational path), otherwise sampling on the next clock cycle.
   */
-class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module {
+class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int,
+    combinationalTrigger:Boolean=true) extends Module {
   //
   // Common constants
   //
@@ -29,24 +32,6 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
   //
   // IO Definitions
   //
-  /** Signal input being sampled with optional flow control signals.
-    */
-  class LogicAnalyzerSignal extends Bundle {
-    /** Data that is sampled and stored to memory.
-      */
-    val data = Input(UInt(width=dataWidth))
-    /** Optional valid signal, gating when data is sampled to memory.
-     *  See validBypass in control group.
-      */
-    val valid = Input(Bool())
-    /** Optional trigger signal, controlling when to start sampling.
-     *  See triggerMode in control group.
-      */
-    val trigger = Input(Bool())
-
-    override def cloneType: this.type = (new LogicAnalyzerSignal).asInstanceOf[this.type]
-  }
-
   /** Read port into memory.
     *
     * Memory may only be read while the logic analyzer is in the idle state.
@@ -113,7 +98,7 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
       * In continuous mode, this will roll over from `samples` to 1, indicating the next memory
       * address to be written.
       */
-    val numSampled = Output(UInt(log2Up(samples + 1)))
+    val numSampled = Output(UInt(width=samplesWidth))
     /** In continuous mode, indicates if the numSampled has ever overflowed.
       * Alternatively put, indicates if all contents of memory are from the latest run.
       *
@@ -125,7 +110,12 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
   }
 
   class LogicAnalyzerIO extends Bundle {
-    val signal = new LogicAnalyzerSignal
+    /** Data to be sampled with (bypassable) valid signal.
+      */
+    val signal = Flipped(Valid(UInt(width=dataWidth)))
+    /** Optional signal to trigger logic analyzer.
+      */
+    val trigger = Flipped(Valid(Bool()))
     val memory = new LogicAnalyzerMemory
     val control = Flipped(Decoupled(new LogicAnalyzerControl))
     val status = new LogicAnalyzerStatus
@@ -157,25 +147,19 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
   // Trigger Control
   //
   val internalValid = confValidBypass || io.signal.valid  // sample when true
-  val lastTrigger = Reg(Bool())  // previous trigger value
-  val lastTriggerValid = Reg(Bool())  // whether the previous trigger value is valid (sampled after arming)
-
-  when (internalValid && state === sArmed) {
-    lastTrigger := io.signal.trigger
-    lastTriggerValid := true.B
-  } .elsewhen (state === sIdle) {
-    lastTriggerValid := false.B
-  }
 
   val triggerModule = Module(new TriggerBlock)
   triggerModule.io.config := confTriggerMode
   triggerModule.io.active := state === sArmed
-  triggerModule.io.input.valid := io.signal.valid
-  triggerModule.io.input.bits := io.signal.trigger
-  val internalTrigger = triggerModule.io.triggered && io.signal.valid
+  triggerModule.io.input.bits := io.trigger.bits
+  triggerModule.io.input.valid := io.trigger.valid
 
   // high means sample this cycle
-  val sample = internalValid && (state === sRunning || (state === sArmed && internalTrigger))
+  val sample = if (combinationalTrigger) {
+    internalValid && (state === sRunning || (state === sArmed && triggerModule.io.triggered))
+  } else {
+    internalValid && state === sRunning
+  }
 
   //
   // Memory Interface & Control
@@ -195,7 +179,7 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
   val memWriteControl = Wire(Vec(lineWidth, Bool()))
   for (i <- 0 until lineWidth) {
     when (nextSample % lineWidth.U === i.U) {
-      memWriteData(i) := io.signal.data
+      memWriteData(i) := io.signal.bits
       memWriteControl(i) := true.B
     } .otherwise {
       memWriteData(i) := 0.U
@@ -233,7 +217,7 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int) extends Module
     // This takes priority over Armed -> Running in the one-sample case
     // TODO: double check this logic
     nextState := sIdle
-  } .elsewhen (state === sArmed && internalTrigger) {
+  } .elsewhen (state === sArmed && triggerModule.io.triggered) {
     nextState := sRunning
   } .otherwise {
     nextState := state

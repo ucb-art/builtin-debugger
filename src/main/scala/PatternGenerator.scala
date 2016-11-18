@@ -115,7 +115,7 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int) extends Mod
       *
       * In continuous mode, this will roll over from `lastSample` + 1 to 1.
       */
-    val numSampled = Output(UInt(log2Up(samples + 1)))
+    val numSampled = Output(UInt(width=log2Up(samples+1)))
     /** In continuous mode, indicates if the numSampled has ever overflowed.
       *
       * Meaningless in single (non-continuous) mode.
