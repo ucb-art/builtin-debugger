@@ -59,6 +59,16 @@ trait PatternGeneratorTestUtils extends PeekPokeTester[PatternGenerator] {
       expectedSampled: Int, ready: Boolean = true,
       trigger: TriggerState = TInvalid, expectedOverflow: Boolean = false) {
     expect(c.io.status.state, expectedState.id, "state mismatch")
+
+    trigger match {
+      case THigh | TLow => poke(c.io.trigger.valid, 1)
+      case TInvalid | TInvHigh | TInvLow => poke(c.io.trigger.valid, 0)
+    }
+    trigger match {
+      case THigh | TInvalid | TInvHigh => poke(c.io.trigger.bits, 1)
+      case TLow | TInvLow => poke(c.io.trigger.bits, 0)
+    }
+
     expectedSignal match {
       case Some(expectedSignal) => {
         expect(c.io.signal.bits, expectedSignal)
@@ -69,15 +79,6 @@ trait PatternGeneratorTestUtils extends PeekPokeTester[PatternGenerator] {
     expect(c.io.status.numSampled, expectedSampled, "sampled mismatch")
     expect(c.io.status.overflow, expectedOverflow, "overflow mismatch")
     poke(c.io.signal.ready, ready)
-
-    trigger match {
-      case THigh | TLow => poke(c.io.trigger.valid, 1)
-      case TInvalid | TInvHigh | TInvLow => poke(c.io.trigger.valid, 0)
-    }
-    trigger match {
-      case THigh | TInvalid | TInvHigh => poke(c.io.trigger.bits, 1)
-      case TLow | TInvLow => poke(c.io.trigger.bits, 0)
-    }
 
     step(1)
   }
@@ -136,23 +137,6 @@ class PatternGeneratorTester(val c: PatternGenerator) extends PeekPokeTester(c) 
   generatorStep(PatternGeneratorState.Running, Some(2), 2)
   generatorStep(PatternGeneratorState.Running, Some(3), 3)
   generatorStep(PatternGeneratorState.Running, Some(4), 4, ready=false)  // stall on last cycle
-  generatorStep(PatternGeneratorState.Running, Some(4), 4)
-  generatorStep(PatternGeneratorState.Idle, None, 4)
-
-  // Basic trigger test
-  arm(false, TriggerMode.High,
-      List(
-        List(1),
-        List(2),
-        List(3),
-        List(4)
-      ), false)
-  generatorStep(PatternGeneratorState.Armed, None, 0, trigger=TInvLow)  // disabled trigger
-  generatorStep(PatternGeneratorState.Armed, None, 0, trigger=TInvHigh)  // "false" trigger
-  generatorStep(PatternGeneratorState.Armed, None, 0, trigger=THigh)
-  generatorStep(PatternGeneratorState.Running, Some(1), 1)
-  generatorStep(PatternGeneratorState.Running, Some(2), 2, trigger=TLow)  // ensure trigger doesn't impact anything
-  generatorStep(PatternGeneratorState.Running, Some(3), 3, trigger=THigh)
   generatorStep(PatternGeneratorState.Running, Some(4), 4)
   generatorStep(PatternGeneratorState.Idle, None, 4)
 
@@ -242,6 +226,58 @@ class PatternGeneratorTester(val c: PatternGenerator) extends PeekPokeTester(c) 
   poke(c.io.control.valid, true)
   generatorStep(PatternGeneratorState.Running, Some(2), 2)
   generatorStep(PatternGeneratorState.Idle, None, 2)
+}
+
+class PatternGeneratorNoncombinationalTriggerTester(val c: PatternGenerator) extends PeekPokeTester(c) with PatternGeneratorTestUtils {
+  // Basic trigger test
+  arm(false, TriggerMode.High,
+      List(
+        List(1),
+        List(2),
+        List(3),
+        List(4)
+      ), false)
+  generatorStep(PatternGeneratorState.Armed, None, 0, trigger=TInvLow)  // disabled trigger
+  generatorStep(PatternGeneratorState.Armed, None, 0, trigger=TInvHigh)  // "false" trigger
+  generatorStep(PatternGeneratorState.Armed, None, 0, trigger=THigh)
+  generatorStep(PatternGeneratorState.Running, Some(1), 1)
+  generatorStep(PatternGeneratorState.Running, Some(2), 2, trigger=TLow)  // ensure trigger doesn't impact anything
+  generatorStep(PatternGeneratorState.Running, Some(3), 3, trigger=THigh)
+  generatorStep(PatternGeneratorState.Running, Some(4), 4)
+  generatorStep(PatternGeneratorState.Idle, None, 4)
+
+  // Pre-trigger abort
+  arm(true, TriggerMode.High,
+      List(
+        List(1),
+        List(2),
+        List(3),
+        List(4)
+      ), false)
+  generatorStep(PatternGeneratorState.Armed, None, 0)
+  generatorStep(PatternGeneratorState.Armed, None, 0)
+  poke(c.io.control.bits.abort, true)
+  poke(c.io.control.valid, true)
+  generatorStep(PatternGeneratorState.Armed, None, 0, trigger=THigh)
+  generatorStep(PatternGeneratorState.Idle, None, 0)
+}
+
+class PatternGeneratorCombinationalTriggerTester(val c: PatternGenerator) extends PeekPokeTester(c) with PatternGeneratorTestUtils {
+  // Basic trigger test
+  arm(false, TriggerMode.High,
+      List(
+        List(1),
+        List(2),
+        List(3),
+        List(4)
+      ), false)
+  generatorStep(PatternGeneratorState.Armed, None, 0, trigger=TInvLow)  // disabled trigger
+  generatorStep(PatternGeneratorState.Armed, None, 0, trigger=TInvHigh)  // "false" trigger
+  generatorStep(PatternGeneratorState.Armed, Some(1), 1, trigger=THigh)
+  generatorStep(PatternGeneratorState.Running, Some(2), 2, trigger=TLow)  // ensure trigger doesn't impact anything
+  generatorStep(PatternGeneratorState.Running, Some(3), 3, trigger=THigh)
+  generatorStep(PatternGeneratorState.Running, Some(4), 4)
+  generatorStep(PatternGeneratorState.Idle, None, 4)
 
   // Pre-trigger abort
   arm(true, TriggerMode.High,
@@ -418,6 +454,16 @@ class PatternGeneratorSpec extends ChiselFlatSpec {
   "Simple PatternGenerator" should "work" in {
     Driver(() => new PatternGenerator(8, 1, 4, false)) {
       c => new PatternGeneratorTester(c)
+    } should be (true)
+  }
+  "PatternGenerator combinational trigger" should "work" in {
+    Driver(() => new PatternGenerator(8, 1, 4)) {
+      c => new PatternGeneratorCombinationalTriggerTester(c)
+    } should be (true)
+  }
+  "PatternGenerator noncombinational trigger" should "work" in {
+    Driver(() => new PatternGenerator(8, 1, 4, false)) {
+      c => new PatternGeneratorNoncombinationalTriggerTester(c)
     } should be (true)
   }
   "PatternGenerator with non-power-of-two samples" should "work" in {
