@@ -12,7 +12,8 @@ import chisel3.util._
   * @param samples number of samples that can be stored in memory, must be an integer multiple of
   * lineWidth
   */
-class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int) extends Module {
+class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
+    combinationalTrigger: Boolean = true) extends Module {
   //
   // Common constants
   //
@@ -24,10 +25,6 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int) extends Mod
   // TODO: DRYify
   val sIdle :: sArmed :: sRunning :: Nil = Enum(UInt(), 3)
   val stateWidth = log2Up(3)
-
-  // TODO: DRYify
-  val trigNone :: trigHigh :: trigLow :: trigRising :: trigFalling :: Nil = Enum(UInt(), 5)
-  val trigWidth = log2Up(5)
 
   //
   // IO Definitions
@@ -85,7 +82,7 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int) extends Mod
       * trigFalling: start sampling on the first valid cycle where trigger is low, following a
       * valid cycle where trigger was high.
       */
-    val triggerMode = UInt(width=trigWidth)
+    val triggerMode = UInt(width=TriggerBlock.Mode.width)
     /** Pattern generator configuration: last sample to play back, or one less than the number of
       * samples to play back.
       */
@@ -126,7 +123,12 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int) extends Mod
   }
 
   class PatternGeneratorIO extends Bundle {
-    val signal = new PatternGeneratorSignal
+    /** Data to be sampled with (bypassable) ready signal.
+      */
+    val signal = Decoupled(UInt(width=dataWidth))
+    /** Optional signal to trigger logic analyzer.
+      */
+    val trigger = Flipped(Valid(Bool()))
     val memory = Flipped(Decoupled(new PatternGeneratorMemory))
     val control = Flipped(Decoupled(new PatternGeneratorControl))
     val status = new PatternGeneratorStatus
@@ -151,7 +153,7 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int) extends Mod
 
   // Configuration bits
   val confReadyBypass = Reg(Bool())
-  val confTriggerMode = Reg(UInt(width=trigWidth))
+  val confTriggerMode = Reg(UInt(width=TriggerBlock.Mode.width))
   val confLastSample = Reg(UInt(width=log2Up(samples)))
   val confContinuous = Reg(Bool())
 
@@ -159,38 +161,21 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int) extends Mod
   // Trigger Control
   //
   val internalReady = confReadyBypass || io.signal.ready  // advance when true
-  val lastTrigger = Reg(Bool())  // previous trigger value
-  val lastTriggerValid = Reg(Bool())  // whether the previous trigger value is valid (sampled after arming)
 
-  // TODO: DRYify with LogicAnalyzer
-  when (state === sArmed) {
-    lastTrigger := io.signal.trigger
-    lastTriggerValid := true.B
-  } .elsewhen (state === sIdle) {
-    lastTriggerValid := false.B
-  }
+  val triggerModule = Module(new TriggerBlock)
+  triggerModule.io.config := confTriggerMode
+  triggerModule.io.active := state === sArmed
+  triggerModule.io.input.bits := io.trigger.bits
+  triggerModule.io.input.valid := io.trigger.valid
 
-  val internalTrigger = Wire(Bool())  // high means start sampling this cycle
-  switch (confTriggerMode) {
-  is (trigNone) {
-    internalTrigger := true.B
+  // high means a sample is currently valid
+  val internalValid = if (combinationalTrigger) {
+    state === sRunning || (state === sArmed && triggerModule.io.triggered)
+  } else {
+    state === sRunning
   }
-  is (trigHigh) {
-    internalTrigger := io.signal.trigger
-  }
-  is (trigLow) {
-    internalTrigger := !io.signal.trigger
-  }
-  is (trigRising) {
-    internalTrigger := io.signal.trigger && lastTriggerValid && !lastTrigger
-  }
-  is (trigFalling) {
-    internalTrigger := !io.signal.trigger && lastTriggerValid && lastTrigger
-  }
-  }
-
   // high means advance sample at end of this cycle (new sample on data bus during next cycle)
-  val advance = internalReady && state === sRunning
+  val advance = internalReady && internalValid
   val lastSample = confLastSample === currSample
 
   //
@@ -224,19 +209,14 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int) extends Mod
     io.memory.ready := true.B
   } .otherwise {
     sampleReadLine := buffer.read(nextSample / lineWidth.U)
-    when (state === sRunning) {
-      io.signal.valid := true.B
-    } .otherwise {
-      io.signal.valid := false.B
-    }
-
+    io.signal.valid := internalValid
     io.memory.ready := false.B
   }
 
   //
   // Output control
   //
-  io.signal.data := sampleReadLine(currSample % lineWidth.U)
+  io.signal.bits := sampleReadLine(currSample % lineWidth.U)
 
   //
   // State Machine
@@ -256,7 +236,7 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int) extends Mod
     currSample := 0.U
     overflow := false.B
     started := false.B
-  } .elsewhen (state === sArmed && internalTrigger) {
+  } .elsewhen (state === sArmed && triggerModule.io.triggered) {
     nextState := sRunning
     started := true.B
   } .elsewhen (advance && lastSample && !confContinuous) {

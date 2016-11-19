@@ -15,7 +15,7 @@ import chisel3.util._
   * in a longer combinational path), otherwise sampling on the next clock cycle.
   */
 class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int,
-    combinationalTrigger:Boolean=true) extends Module {
+    combinationalTrigger: Boolean = true) extends Module {
   //
   // Common constants
   //

@@ -12,13 +12,6 @@ object AnalyzerState extends Enumeration {  // TODO: DRYify
 }
 import AnalyzerState.AnalyzerStateType
 
-sealed trait TriggerState
-case object THigh extends TriggerState
-case object TLow extends TriggerState
-case object TInvalid extends TriggerState
-case object TInvHigh extends TriggerState
-case object TInvLow extends TriggerState
-
 trait LogicAnalyzerTestUtils extends PeekPokeTester[LogicAnalyzer] {
   def c: LogicAnalyzer
 
