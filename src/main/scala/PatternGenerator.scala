@@ -152,10 +152,6 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
   val overflow = Reg(Bool())
   val started = Reg(Bool())
 
-  io.status.state := state
-  io.status.numSampled := currSample
-  io.status.overflow := overflow
-
   // Configuration bits
   val confReadyBypass = Reg(Bool())
   val confTriggerMode = Reg(UInt(width=TriggerBlock.Mode.width))
@@ -173,18 +169,15 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
   triggerModule.io.input.bits := io.trigger.bits
   triggerModule.io.input.valid := io.trigger.valid
 
-  if (combinationalTrigger) {
-    io.status.started := started || (state === sArmed && triggerModule.io.triggered)
+  val combinationalTriggerFire = if (combinationalTrigger) {
+    state === sArmed && triggerModule.io.triggered
   } else {
-    io.status.started := started
+    false.B
   }
 
   // high means a sample is currently valid
-  val internalValid = if (combinationalTrigger) {
-    state === sRunning || (state === sArmed && triggerModule.io.triggered)
-  } else {
-    state === sRunning
-  }
+  val internalValid = state === sRunning || combinationalTriggerFire
+
   // high means advance sample at end of this cycle (new sample on data bus during next cycle)
   val advance = internalReady && internalValid
   val lastSample = confLastSample === currSample
@@ -194,14 +187,11 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
   //
   val nextSample = Wire(UInt(width=log2Up(samples)))
   when (advance && !(io.control.bits.abort && io.control.valid)) {
-    when (lastSample && confContinuous) {
-      // Overflow in continuous mode
+    when (lastSample) {
       nextSample := 0.U
       overflow := true.B
-    } .elsewhen (!lastSample) {
-      nextSample := currSample + 1.U
     } .otherwise {
-      nextSample := currSample
+      nextSample := currSample + 1.U
     }
   } .otherwise {
     nextSample := currSample
@@ -227,6 +217,11 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
   //
   // Output control
   //
+  io.status.state := state
+  io.status.numSampled := currSample
+  io.status.started := started || combinationalTriggerFire
+  io.status.overflow := overflow
+
   io.signal.bits := sampleReadLine(currSample % lineWidth.U)
 
   //
@@ -238,9 +233,7 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
 
   when (io.control.bits.abort && io.control.valid) {
     nextState := sIdle
-    if (combinationalTrigger) {
-      started := (state ===sArmed && triggerModule.io.triggered)
-    }
+    started := started || combinationalTriggerFire
   } .elsewhen (state === sIdle && io.control.bits.arm && io.control.valid) {
     nextState := sArmed
     confReadyBypass := io.control.bits.readyBypass
