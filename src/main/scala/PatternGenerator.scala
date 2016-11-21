@@ -107,12 +107,17 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
     /** Current state the pattern generator is in.
       */
     val state = Output(UInt(width=stateWidth))
-    /** Number of samples played back, between 0 and `lastSample` + 1, inclusive.
-      * 0 means no samples have been played back yet.
+    /** Index of the current sample being played (or, in idle, the last sample to be played back).
       *
-      * In continuous mode, this will roll over from `lastSample` + 1 to 1.
+      * 0 can be disambiguated as either never started or played the first sample by reading
+      * `started`.
+      *
+      * In continuous mode, this will roll over from `lastSample` 0.
       */
-    val numSampled = Output(UInt(width=log2Up(samples+1)))
+    val numSampled = Output(UInt(width=log2Up(samples)))
+    /** True if a sample was played out (pattern generator was triggered).
+      */
+    val started = Output(Bool())
     /** In continuous mode, indicates if the numSampled has ever overflowed.
       *
       * Meaningless in single (non-continuous) mode.
@@ -146,10 +151,9 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
   val currSample = Reg(UInt(width=log2Up(samples)))
   val overflow = Reg(Bool())
   val started = Reg(Bool())
-  val actualStarted = Wire(Bool())
 
   io.status.state := state
-  io.status.numSampled := Mux(actualStarted, currSample +& 1.U, 0.U)
+  io.status.numSampled := currSample
   io.status.overflow := overflow
 
   // Configuration bits
@@ -168,6 +172,12 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
   triggerModule.io.active := state === sArmed
   triggerModule.io.input.bits := io.trigger.bits
   triggerModule.io.input.valid := io.trigger.valid
+
+  if (combinationalTrigger) {
+    io.status.started := started || (state === sArmed && triggerModule.io.triggered)
+  } else {
+    io.status.started := started
+  }
 
   // high means a sample is currently valid
   val internalValid = if (combinationalTrigger) {
@@ -228,7 +238,9 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
 
   when (io.control.bits.abort && io.control.valid) {
     nextState := sIdle
-    actualStarted := started
+    if (combinationalTrigger) {
+      started := (state ===sArmed && triggerModule.io.triggered)
+    }
   } .elsewhen (state === sIdle && io.control.bits.arm && io.control.valid) {
     nextState := sArmed
     confReadyBypass := io.control.bits.readyBypass
@@ -238,22 +250,13 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
     currSample := 0.U
     overflow := false.B
     started := false.B
-    actualStarted := started
   } .elsewhen (state === sArmed && triggerModule.io.triggered) {
     nextState := sRunning
     started := true.B
-    val actualStartedVal = if (combinationalTrigger) {
-      true.B
-    } else {
-      false.B
-    }
-    actualStarted := actualStartedVal
   } .elsewhen (advance && lastSample && !confContinuous) {
     nextState := sIdle
-    actualStarted := started
   } .otherwise {
     nextState := state
-    actualStarted := started
   }
 
   state := nextState
