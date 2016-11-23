@@ -34,7 +34,7 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
   class PatternGeneratorSignal extends Bundle {
     /** Data being played back from memory.
       */
-    val data = Output(UInt(width=dataWidth))
+    val data = Output(UInt(dataWidth.W))
     /** High when data is valid (being played back).
       */
     val valid = Output(Bool())
@@ -59,9 +59,9 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
     * The lowest sample is the least significant dataWidth bits of the returned memory content.
     */
   class PatternGeneratorMemory extends Bundle {
-    val writeAddr = UInt(width=reqAddrWidth)
+    val writeAddr = UInt(reqAddrWidth.W)
 
-    val writeData = Vec(lineWidth, UInt(width=dataWidth))
+    val writeData = Vec(lineWidth, UInt(dataWidth.W))
 
     override def cloneType: this.type = (new PatternGeneratorMemory).asInstanceOf[this.type]
   }
@@ -82,11 +82,11 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
       * trigFalling: start sampling on the first valid cycle where trigger is low, following a
       * valid cycle where trigger was high.
       */
-    val triggerMode = UInt(width=TriggerBlock.Mode.width)
+    val triggerMode = UInt(TriggerBlock.Mode.width.W)
     /** Pattern generator configuration: last sample to play back, or one less than the number of
       * samples to play back.
       */
-    val lastSample = UInt(width=log2Up(samples))
+    val lastSample = UInt(log2Up(samples).W)
     /** Pattern generator configuration: loop back to first sample after playback hits lastSample.
       */
     val continuous = Bool()
@@ -106,7 +106,7 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
   class PatternGeneratorStatus extends Bundle {
     /** Current state the pattern generator is in.
       */
-    val state = Output(UInt(width=stateWidth))
+    val state = Output(UInt(stateWidth.W))
     /** Index of the current sample being played (or, in idle, the last sample to be played back).
       *
       * 0 can be disambiguated as either never started or played the first sample by reading
@@ -114,7 +114,7 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
       *
       * In continuous mode, this will roll over from `lastSample` 0.
       */
-    val numSampled = Output(UInt(width=log2Up(samples)))
+    val numSampled = Output(UInt(log2Up(samples).W))
     /** True if a sample was played out (pattern generator was triggered).
       */
     val started = Output(Bool())
@@ -130,7 +130,7 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
   class PatternGeneratorIO extends Bundle {
     /** Data to be sampled with (bypassable) ready signal.
       */
-    val signal = Decoupled(UInt(width=dataWidth))
+    val signal = Decoupled(UInt(dataWidth.W))
     /** Optional signal to trigger logic analyzer.
       */
     val trigger = Flipped(Valid(Bool()))
@@ -146,16 +146,16 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
   //
   // Pattern Generator State
   //
-  val buffer = SeqMem(memDepth, Vec(lineWidth, UInt(width=dataWidth)))
-  val state = Reg(UInt(width=stateWidth), init=sIdle)
-  val currSample = Reg(UInt(width=log2Up(samples)))
+  val buffer = SeqMem(memDepth, Vec(lineWidth, UInt(dataWidth.W)))
+  val state = Reg(UInt(stateWidth.W), init=sIdle)
+  val currSample = Reg(UInt(log2Up(samples).W))
   val overflow = Reg(Bool())
   val started = Reg(Bool())
 
   // Configuration bits
   val confReadyBypass = Reg(Bool())
-  val confTriggerMode = Reg(UInt(width=TriggerBlock.Mode.width))
-  val confLastSample = Reg(UInt(width=log2Up(samples)))
+  val confTriggerMode = Reg(UInt(TriggerBlock.Mode.width.W))
+  val confLastSample = Reg(UInt(log2Up(samples).W))
   val confContinuous = Reg(Bool())
 
   //
@@ -185,7 +185,7 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
   //
   // Memory Interface & Control
   //
-  val nextSample = Wire(UInt(width=log2Up(samples)))
+  val nextSample = Wire(UInt(log2Up(samples).W))
   when (advance && !(io.control.bits.abort && io.control.valid)) {
     when (lastSample) {
       nextSample := 0.U
@@ -199,7 +199,7 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
   currSample := nextSample
 
   // Memory control
-  val sampleReadLine = Wire(Vec(lineWidth, UInt(width=dataWidth)))
+  val sampleReadLine = Wire(Vec(lineWidth, UInt(dataWidth.W)))
   when (state === sIdle) {
     sampleReadLine := Vec(Seq.fill(lineWidth)(0.U))  // TODO: latch previous sample?
     io.signal.valid := false.B
@@ -229,7 +229,7 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
   //
   io.control.ready := true.B
 
-  val nextState = Wire(UInt(width=stateWidth))
+  val nextState = Wire(UInt(stateWidth.W))
 
   when (io.control.bits.abort && io.control.valid) {
     nextState := sIdle

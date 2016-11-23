@@ -57,7 +57,7 @@ class TriggerBlock extends Module {
   val io = IO(new Bundle {
     /** Trigger mode, see API docs of subtypes of TriggerMode.
       */
-    val config = Input(UInt(width=Mode.width))
+    val config = Input(UInt(Mode.width.W))
     /** Whether the module is active or not. A low here acts as a reset for internal state, like
       * required for rising and falling triggers.
       */

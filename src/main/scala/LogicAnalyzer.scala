@@ -42,12 +42,12 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int,
     */
   class LogicAnalyzerMemory extends Bundle {
     // TODO: ready/valid this?
-    val reqAddr = Input(UInt(width=reqAddrWidth))
+    val reqAddr = Input(UInt(reqAddrWidth.W))
 
     /** Memory line of the requested address. Available the cycle after the address is requested
       * and when the logic analyzer is in the idle state.
       */
-    val respData = Output(Vec(lineWidth, UInt(width=dataWidth)))
+    val respData = Output(Vec(lineWidth, UInt(dataWidth.W)))
 
     override def cloneType: this.type = (new LogicAnalyzerMemory).asInstanceOf[this.type]
   }
@@ -67,12 +67,12 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int,
       * trigFalling: start sampling on the first valid cycle where trigger is low, following a
       * valid cycle where trigger was high.
       */
-    val triggerMode = UInt(width=TriggerBlock.Mode.width)
+    val triggerMode = UInt(TriggerBlock.Mode.width.W)
     /** Logic analyzer configuration: number of samples to take.
       * Zero means to run in continuous mode, wrapping around the memory write address and
       * overwriting previous samples until stopped through the control abort signal.
       */
-    val numSamples = UInt(width=samplesWidth)
+    val numSamples = UInt(samplesWidth.W)
     /** Arm the logic analyzer, latching in the control configuration bits.
       * Only valid in the idle state, transitions to the armed state.
       */
@@ -91,14 +91,14 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int,
   class LogicAnalyzerStatus extends Bundle {
     /** Current state the logic analyzer is in.
       */
-    val state = Output(UInt(width=stateWidth))
+    val state = Output(UInt(stateWidth.W))
     /** Number of valid samples in the buffer, between 0 and `samples`, inclusive.
       * 0 means no samples are valid.
       *
       * In continuous mode, this will roll over from `samples` to 1, indicating the next memory
       * address to be written.
       */
-    val numSampled = Output(UInt(width=samplesWidth))
+    val numSampled = Output(UInt(samplesWidth.W))
     /** In continuous mode, indicates if the numSampled has ever overflowed.
       * Alternatively put, indicates if all contents of memory are from the latest run.
       *
@@ -112,7 +112,7 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int,
   class LogicAnalyzerIO extends Bundle {
     /** Data to be sampled with (bypassable) valid signal.
       */
-    val signal = Flipped(Valid(UInt(width=dataWidth)))
+    val signal = Flipped(Valid(UInt(dataWidth.W)))
     /** Optional signal to trigger logic analyzer.
       */
     val trigger = Flipped(Valid(Bool()))
@@ -128,10 +128,10 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int,
   //
   // Logic Analyzer State
   //
-  val buffer = SeqMem(memDepth, Vec(lineWidth, UInt(width=dataWidth)))
-  val state = Reg(UInt(width=stateWidth), init=sIdle)
-  val nextState = Wire(UInt(width=stateWidth))
-  val nextSample = Reg(UInt(width=samplesWidth))
+  val buffer = SeqMem(memDepth, Vec(lineWidth, UInt(dataWidth.W)))
+  val state = Reg(UInt(stateWidth.W), init=sIdle)
+  val nextState = Wire(UInt(stateWidth.W))
+  val nextSample = Reg(UInt(samplesWidth.W))
   val overflow = Reg(Bool())
 
   io.status.state := state
@@ -140,8 +140,8 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int,
 
   // Configuration bits
   val confValidBypass = Reg(Bool())
-  val confTriggerMode = Reg(UInt(width=TriggerBlock.Mode.width))
-  val confNumSamples = Reg(UInt(width=samplesWidth))
+  val confTriggerMode = Reg(UInt(TriggerBlock.Mode.width.W))
+  val confNumSamples = Reg(UInt(samplesWidth.W))
 
   //
   // Trigger Control
@@ -175,7 +175,7 @@ class LogicAnalyzer(dataWidth: Int, lineWidth: Int, samples: Int,
   }
 
   // Line write control
-  val memWriteData = Wire(Vec(lineWidth, UInt(width=dataWidth)))
+  val memWriteData = Wire(Vec(lineWidth, UInt(dataWidth.W)))
   val memWriteControl = Wire(Vec(lineWidth, Bool()))
   for (i <- 0 until lineWidth) {
     when (nextSample % lineWidth.U === i.U) {
