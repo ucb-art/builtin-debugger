@@ -23,7 +23,7 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
   val reqAddrWidth = log2Up(memDepth)
 
   // TODO: DRYify
-  val sIdle :: sArmed :: sRunning :: Nil = Enum(UInt(), 3)
+  val sIdle :: sArmed :: sRunning :: Nil = Enum(3)
   val stateWidth = log2Up(3)
 
   //

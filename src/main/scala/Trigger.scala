@@ -22,6 +22,8 @@ object TriggerBlock {
   }
 
   object Mode {
+    import scala.language.implicitConversions
+
     implicit def toInt(x: Mode) = x.id
     implicit def toBigInt(x: Mode):BigInt = x.id
     // TODO: this could be automatically generated with macros and stuff
@@ -54,7 +56,7 @@ object TriggerBlock {
 class TriggerBlock extends Module {
   import TriggerBlock._
 
-  val io = IO(new Bundle {
+  class TriggerIO extends Bundle {
     /** Trigger mode, see API docs of subtypes of TriggerMode.
       */
     val config = Input(UInt(Mode.width.W))
@@ -69,7 +71,9 @@ class TriggerBlock extends Module {
       * being high and a reset through high-low-high toggling of active.
       */
     val triggered = Output(Bool())
-  })
+  }
+
+  val io = IO(new TriggerIO)
 
   val lastInput = Reg(Valid(Bool()))
 
