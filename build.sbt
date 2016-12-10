@@ -1,5 +1,7 @@
 name := "builtin-debugger"
 
+organization := "edu.berkeley.cs"
+
 version := "0"
 
 scalaVersion := "2.11.7"
