@@ -9,3 +9,5 @@ target/
 .sconsign.dblite
 .settings
 
+/lib
+
