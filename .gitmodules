@@ -1,0 +1,3 @@
+[submodule "examples/deps/chisel-jtag"]
+	path = examples/deps/chisel-jtag
+	url = git@github.com:ucb-art/chisel-jtag.git

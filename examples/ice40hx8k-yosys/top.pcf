@@ -1,0 +1,23 @@
+set_io io_out0[0] B5
+set_io io_out0[1] B4
+set_io io_out0[2] A2
+set_io io_out0[3] A1
+set_io io_out0[4] C5
+set_io io_out0[5] C4
+set_io io_out0[6] B3
+set_io io_out0[7] C3
+
+set_io io_out1[0] J15
+set_io io_out1[1] G14
+set_io io_out1[2] K14
+
+set_io io_out2[0] K15
+set_io io_out2[1] M16
+set_io io_out2[2] N16
+
+set_io io_jtag_TCK C16
+set_io io_jtag_TMS D16
+set_io io_jtag_TDI E16
+set_io io_jtag_TDO_data F16
+
+set_io clock J3

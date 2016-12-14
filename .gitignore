@@ -1,6 +1,11 @@
 /bin/
 target/
 /test_run_dir/
+*build/
 
 .classpath
 .project
+.pydevproject
+.sconsign.dblite
+.settings
+
