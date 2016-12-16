@@ -36,27 +36,27 @@ class top extends Module {
     val reg1 = Reg(UInt(3.W), init=5.U)
     val reg2 = Reg(UInt(3.W), init=5.U)
 
-    val chain1 = Module(new CaptureUpdateChain(8))
+    val chain1 = Module(new CaptureUpdateChain(UInt(8.W)))
     chain1.io.capture.bits := reg0
     when (chain1.io.update.valid) {
       reg0 := chain1.io.update.bits
     }
 
-    val chain2 = Module(new CaptureUpdateChain(3))
+    val chain2 = Module(new CaptureUpdateChain(UInt(3.W)))
     chain2.io.capture.bits := reg1
     when (chain2.io.update.valid) {
       reg1 := chain2.io.update.bits
     }
 
-    val chain3 = Module(new CaptureUpdateChain(3))
+    val chain3 = Module(new CaptureUpdateChain(UInt(3.W)))
     chain3.io.capture.bits := reg2
     when (chain3.io.update.valid) {
       reg2 := chain3.io.update.bits
     }
 
-    val chainCtl = Module(new CaptureUpdateChain(pg.io.control.bits.widthInt))
+    val chainCtl = Module(new CaptureUpdateChain(pg.io.control.bits.cloneType))
 
-    val chainData = Module(new CaptureUpdateChain(8))
+    val chainData = Module(new CaptureUpdateChain(pgWrite.io.input.bits.cloneType))
 
     val tapIo = JtagTapGenerator(irLength, Map(
           chain1 -> 1,
@@ -88,13 +88,13 @@ class top extends Module {
     io.reg2 := reg2
 
     // TODO: some backpressure mechanism
-    io.queueCtl.bits := io.queueCtl.bits.fromBits(chainCtl.io.update.bits)
+    io.queueCtl.bits := chainCtl.io.update.bits
     io.queueCtl.valid := chainCtl.io.update.valid
 
     io.queueDataSelect := tapIo.output.instruction === 5.U
-    io.queueData.bits := io.queueData.bits.fromBits(chainData.io.update.bits)
+    io.queueData.bits := chainData.io.update.bits
     io.queueData.valid := chainData.io.update.valid
-    chainData.io.capture.bits := io.addrIn
+    chainData.io.capture.bits := chainData.io.capture.bits.fromBits(io.addrIn)
   }
 
   // Generate arbitrary number of chained TAPs
@@ -134,10 +134,10 @@ class top extends Module {
   queueCtl.ready := pg.io.control.ready
 
   val (cnt, wrap) = Counter(true.B, 12000000)
-  val pulse = cnt < 1000000.U
+  val pulse = cnt > (12000000 - 1000000).U
   val pgReady = Reg(Bool(), init=false.B)
   pg.io.trigger.valid := true.B
-  pg.io.trigger.bits := wrap
+  pg.io.trigger.bits := pulse
   pg.io.signal.ready := pgReady
   when (wrap && pg.io.signal.valid) {
     pgReady := true.B
