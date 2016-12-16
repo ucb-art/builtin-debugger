@@ -133,11 +133,20 @@ class top extends Module {
   pg.io.control.valid := queueCtl.valid
   queueCtl.ready := pg.io.control.ready
 
+  val (cnt, wrap) = Counter(true.B, 12000000)
+  val pulse = cnt < 1000000.U
+  val pgReady = Reg(Bool(), init=false.B)
+  pg.io.signal.ready := pgReady
+  when (wrap && pg.io.signal.valid) {
+    pgReady := true.B
+  } .elsewhen (pg.io.signal.valid) {
+    pgReady := false.B
+  }
 
   //
   // Assign outputs
   //
-  io.out0 := Cat(pg.io.signal.valid, 0.U(3.W), pg.io.signal.valid)
+  io.out0 := Cat(pulse, pgReady, pg.io.signal.valid, 0.U(1.W), pg.io.signal.bits)
   io.out1 := taps.head.io.reg1
   io.out2 := taps.head.io.reg2
 }
