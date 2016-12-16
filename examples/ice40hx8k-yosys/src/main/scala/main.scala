@@ -1,7 +1,8 @@
-package jtagExamples
+package debuggersExamples
 
 import chisel3._
 import chisel3.util._
+import debuggers._
 import jtag._
 
 class top extends Module {
@@ -20,6 +21,15 @@ class top extends Module {
   val io = IO(new ModIO)
   val irLength = 3
 
+  //
+  // System blocks
+  //
+  val pg = Module(new PatternGenerator(4, 2, 8))
+  val pgWrite = pg.createStreamingMemoryInterface
+
+  //
+  // TAP blocks
+  //
   class JtagTapClocked (modClock: Clock, modReset: Bool)
       extends Module(override_clock=Some(modClock), override_reset=Some(modReset)) {
     val reg0 = Reg(UInt(8.W), init=0x55.U)
@@ -44,13 +54,16 @@ class top extends Module {
       reg2 := chain3.io.update.bits
     }
 
-    val chain4 = Module(new CaptureUpdateChain(8))
+    val chainCtl = Module(new CaptureUpdateChain(pg.io.control.bits.widthInt))
+
+    val chainData = Module(new CaptureUpdateChain(8))
 
     val tapIo = JtagTapGenerator(irLength, Map(
           chain1 -> 1,
           chain2 -> 2,
           chain3 -> 3,
-          chain4 -> 4
+          chainCtl -> 4,
+          chainData -> 5
         ),
         idcode=Some((6, JtagIdcode(0xA, 0x123, 0x42))))
 
@@ -59,17 +72,29 @@ class top extends Module {
       val reg1 = Output(UInt(3.W))
       val reg2 = Output(UInt(3.W))
 
-      val queue0 = Output(Decoupled(UInt(8.W)))
+      val queueCtl = Decoupled(pg.io.control.bits.cloneType)
+
+      val queueDataSelect = Output(Bool())
+      val queueData = Decoupled(pgWrite.io.input.bits.cloneType)
+      val addrIn = Input(pgWrite.io.addr.cloneType)
     }
 
     val io = IO(new TapBlockIO(irLength))
     io.jtag <> tapIo.jtag
     io.output <> tapIo.output
+
     io.reg0 := reg0
     io.reg1 := reg1
     io.reg2 := reg2
-    io.queue0.bits := chain4.io.update.bits
-    io.queue0.valid := chain4.io.update.valid
+
+    // TODO: some backpressure mechanism
+    io.queueCtl.bits := io.queueCtl.bits.fromBits(chainCtl.io.update.bits)
+    io.queueCtl.valid := chainCtl.io.update.valid
+
+    io.queueDataSelect := tapIo.output.instruction === 5.U
+    io.queueData.bits := io.queueData.bits.fromBits(chainData.io.update.bits)
+    io.queueData.valid := chainData.io.update.valid
+    chainData.io.capture.bits := io.addrIn
   }
 
   // Generate arbitrary number of chained TAPs
@@ -95,17 +120,24 @@ class top extends Module {
   val flip = Reg(Bool(), init=false.B)
   val count = Reg(UInt(8.W), init=0.U)
   // rocket-chip util seem to conflict with chisel3.util
-  val resyncQueue0 = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queue0)
-  resyncQueue0.ready := true.B
-  when (resyncQueue0.valid) {
-    count := resyncQueue0.bits
-    flip := !flip
-  }
+  taps.head.io.addrIn := pgWrite.io.addr  // TODO: should this have some kind of synchronization?
+  val queueCtl = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queueCtl)
+  val queueData = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queueData)
+
+  pgWrite.io.reset := !_root_.util.LevelSyncFrom(taps.head.clock, taps.head.io.queueDataSelect)
+  pgWrite.io.input.bits := queueData.bits
+  pgWrite.io.input.valid := queueData.valid
+  queueData.ready := pgWrite.io.input.ready
+
+  pg.io.control.bits := queueCtl.bits
+  pg.io.control.valid := queueCtl.valid
+  queueCtl.ready := pg.io.control.ready
+
 
   //
   // Assign outputs
   //
-  io.out0 := Cat(flip, count(6, 0))
+  io.out0 := Cat(pg.io.signal.valid, 0.U(3.W), pg.io.signal.valid)
   io.out1 := taps.head.io.reg1
   io.out2 := taps.head.io.reg2
 }

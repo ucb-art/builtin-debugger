@@ -13,9 +13,11 @@ resolvers ++= Seq(
 
 libraryDependencies += "edu.berkeley.cs" %% "chisel3" % "3.1-SNAPSHOT"
 
+lazy val chiselDebuggers = RootProject(file("../../"))
 lazy val chiselJtag = RootProject(file("../deps/chisel-jtag"))
 lazy val externalUtils = RootProject(file("../deps/chisel-jtag/external"))
 
 lazy val main = (project in file(".")).
+  dependsOn(chiselDebuggers).
   dependsOn(chiselJtag).
   dependsOn(externalUtils)

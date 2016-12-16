@@ -281,7 +281,7 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
     when (io.reset) {
       addr := 0.U
     } .elsewhen (io.input.ready && io.input.valid) {
-      when (addr === memDepth.U) {
+      when (addr === (memDepth - 1).U) {
         addr := 0.U
       } .otherwise {
         addr := addr + 1.U
