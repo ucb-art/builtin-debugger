@@ -24,7 +24,7 @@ class top extends Module {
   //
   // System blocks
   //
-  val pg = Module(new PatternGenerator(4, 2, 8))
+  val pg = Module(new PatternGenerator(4, 2, 32, combinationalTrigger=false))
   val pgWrite = pg.createStreamingMemoryInterface
 
   //
@@ -136,6 +136,8 @@ class top extends Module {
   val (cnt, wrap) = Counter(true.B, 12000000)
   val pulse = cnt < 1000000.U
   val pgReady = Reg(Bool(), init=false.B)
+  pg.io.trigger.valid := true.B
+  pg.io.trigger.bits := wrap
   pg.io.signal.ready := pgReady
   when (wrap && pg.io.signal.valid) {
     pgReady := true.B
