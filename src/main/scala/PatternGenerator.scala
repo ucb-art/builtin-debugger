@@ -99,6 +99,7 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
     val abort = Bool()
 
     override def cloneType: this.type = (new PatternGeneratorControl).asInstanceOf[this.type]
+    def widthInt = 4 + TriggerBlock.Mode.width + log2Up(samples)  // TODO eliminate this nasty hack
   }
 
   /** Pattern generator status. Always valid.
@@ -253,4 +254,49 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
   }
 
   state := nextState
+
+  //
+  // Interface Generators
+  //
+  /** A Module that presents a streaming data interface for writing into the memory. Address starts
+    * at 0 and auto-increments for every memory line written, wrapping back to zero.
+    *
+    * Combinational translation.
+    */
+  class StreamingMemoryQueue extends Module {
+    val outer = PatternGenerator.this
+
+    class ModIO extends Bundle {
+      val reset = Input(Bool())  // synchronous address reset
+      val addr = Output(outer.io.memory.bits.writeAddr.cloneType)  // current address indicator
+      val input = Flipped(Decoupled(outer.io.memory.bits.writeData.cloneType))  // data load queue
+
+      val output = Decoupled(outer.io.memory.bits.cloneType)  // interface to PG memory
+    }
+    val io = IO(new ModIO)
+
+    val addr = Reg(UInt(reqAddrWidth.W), init=0.U)
+    io.addr := addr
+
+    when (io.reset) {
+      addr := 0.U
+    } .elsewhen (io.input.ready && io.input.valid) {
+      when (addr === memDepth.U) {
+        addr := 0.U
+      } .otherwise {
+        addr := addr + 1.U
+      }
+    }
+
+    io.input.ready := io.output.ready
+    io.output.valid := io.input.valid
+    io.output.bits.writeAddr := addr
+    io.output.bits.writeData := io.input.bits
+  }
+
+  def createStreamingMemoryInterface() = {
+    val interface = Module(new StreamingMemoryQueue)
+    io.memory <> interface.io.output
+    interface
+  }
 }

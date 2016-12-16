@@ -6,7 +6,7 @@ version := "0"
 
 scalaVersion := "2.11.7"
 
-scalacOptions := Seq("-deprecation", "-feature")
+scalacOptions := Seq("-deprecation", "-feature", "-language:reflectiveCalls")
 
 resolvers ++= Seq(
   Resolver.sonatypeRepo("snapshots"),
@@ -24,6 +24,5 @@ libraryDependencies ++= (Seq("chisel3","chisel-iotesters").map {
 })
 
 libraryDependencies ++= Seq(
-  "org.scalatest" %% "scalatest" % "2.2.5",
-  "org.scalacheck" %% "scalacheck" % "1.12.4"
+  "org.scalatest" %% "scalatest" % "2.2.5"
 )
