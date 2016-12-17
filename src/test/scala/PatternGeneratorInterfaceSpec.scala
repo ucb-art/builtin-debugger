@@ -103,53 +103,60 @@ class PatternGeneratorInterfaceSpec extends FlatSpec with PatternGeneratorImplic
   "PatternGenerator StreaminigMemoryQueue" should "work" in {
     run(new Module {
       val pg = Module(new PatternGenerator(8, 1, 4, false))
-      val smq = pg.createStreamingMemoryInterface()
+      val saq = Module(new StreamingAddressQueue(pg.io.memory.bits.writeData.cloneType, pg.memDepth))
 
       val io = IO(new Bundle {
         val pgIo = pg.io.cloneType
 
-        val smqReset = smq.io.reset.chiselCloneType
-        val smqAddr = smq.io.addr.chiselCloneType
-        val smqInput = smq.io.input.chiselCloneType
+        val saqReset = saq.io.reset.chiselCloneType
+        val saqInput = saq.io.input.chiselCloneType
+
+        val saqAddr = saq.io.output.bits.addr.chiselCloneType
       })
 
-      // Don't connect the memory line, leave that for the interface to generate
+      pg.io.memory.valid := saq.io.output.valid
+      saq.io.output.ready := pg.io.memory.ready
+      pg.io.memory.bits.writeAddr := saq.io.output.bits.addr
+      pg.io.memory.bits.writeData := saq.io.output.bits.data
+
       io.pgIo.signal <> pg.io.signal
       io.pgIo.trigger <> pg.io.trigger
       io.pgIo.control <> pg.io.control
       io.pgIo.status <> pg.io.status
 
-      io.smqReset <> smq.io.reset
-      io.smqAddr <> smq.io.addr
-      io.smqInput <> smq.io.input
+      io.saqReset <> saq.io.reset
+      io.saqInput <> saq.io.input
+
+      io.saqAddr <> saq.io.output.bits.addr
     }) {implicit t => c =>
-      c.io.smqReset <<= false
+      c.io.pgIo.control.valid <<= false
+      c.io.saqReset <<= false
 
       // Stream data through
-      c.io.smqInput.valid <<= true
+      c.io.saqInput.valid <<= true
 
-      c.io.smqInput.bits(0) <<= 1
-      c.io.smqAddr ?== 0
-      c.io.smqInput.ready ?== true
+      c.io.saqInput.bits(0) <<= 1
+      c.io.saqAddr ?== 0
+      c.io.saqInput.ready ?== true
       step()
 
-      c.io.smqInput.bits(0) <<= 2
-      c.io.smqAddr ?== 1
-      c.io.smqInput.ready ?== true
+      c.io.saqInput.bits(0) <<= 2
+      c.io.saqAddr ?== 1
+      c.io.saqInput.ready ?== true
       step()
 
-      c.io.smqInput.bits(0) <<= 3
-      c.io.smqAddr ?== 2
-      c.io.smqInput.ready ?== true
+      c.io.saqInput.bits(0) <<= 3
+      c.io.saqAddr ?== 2
+      c.io.saqInput.ready ?== true
       step()
 
-      c.io.smqInput.bits(0) <<= 4
-      c.io.smqAddr ?== 3
-      c.io.smqInput.ready ?== true
+      c.io.saqInput.bits(0) <<= 4
+      c.io.saqAddr ?== 3
+      c.io.saqInput.ready ?== true
       step()
 
-      c.io.smqAddr ?== 0  // wraparound behavior
-      c.io.smqInput.valid <<= false
+      c.io.saqAddr ?== 0  // wraparound behavior
+      c.io.saqInput.valid <<= false
 
       // Test read-out
       arm(c.io.pgIo, true, TriggerMode.None, 4, false)

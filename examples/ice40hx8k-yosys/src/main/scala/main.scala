@@ -24,8 +24,7 @@ class top extends Module {
   //
   // System blocks
   //
-  val pg = Module(new PatternGenerator(4, 2, 32, combinationalTrigger=false))
-  val pgWrite = pg.createStreamingMemoryInterface
+  val pg = Module(new PatternGenerator(4, 2, 32))
 
   //
   // TAP blocks
@@ -36,27 +35,31 @@ class top extends Module {
     val reg1 = Reg(UInt(3.W), init=5.U)
     val reg2 = Reg(UInt(3.W), init=5.U)
 
-    val chain1 = Module(new CaptureUpdateChain(UInt(8.W)))
+    val chain1 = Module(CaptureUpdateChain(UInt(8.W)))
     chain1.io.capture.bits := reg0
     when (chain1.io.update.valid) {
       reg0 := chain1.io.update.bits
     }
 
-    val chain2 = Module(new CaptureUpdateChain(UInt(3.W)))
+    val chain2 = Module(CaptureUpdateChain(UInt(3.W)))
     chain2.io.capture.bits := reg1
     when (chain2.io.update.valid) {
       reg1 := chain2.io.update.bits
     }
 
-    val chain3 = Module(new CaptureUpdateChain(UInt(3.W)))
+    val chain3 = Module(CaptureUpdateChain(UInt(3.W)))
     chain3.io.capture.bits := reg2
     when (chain3.io.update.valid) {
       reg2 := chain3.io.update.bits
     }
 
-    val chainCtl = Module(new CaptureUpdateChain(pg.io.control.bits.cloneType))
+    val chainCtl = Module(CaptureUpdateChain(pg.io.control.bits.cloneType))
 
-    val chainData = Module(new CaptureUpdateChain(pgWrite.io.input.bits.cloneType))
+    val dataStreamer = Module(new StreamingAddressQueue(pg.io.memory.bits.writeData.cloneType, pg.memDepth))
+    val chainData = Module(CaptureUpdateChain(dataStreamer.io.output.bits.addr.cloneType,
+        dataStreamer.io.input.bits.cloneType))
+    dataStreamer.io.input.valid := chainData.io.update.valid
+    dataStreamer.io.input.bits := chainData.io.update.bits
 
     val tapIo = JtagTapGenerator(irLength, Map(
           chain1 -> 1,
@@ -72,11 +75,8 @@ class top extends Module {
       val reg1 = Output(UInt(3.W))
       val reg2 = Output(UInt(3.W))
 
-      val queueCtl = Decoupled(pg.io.control.bits.cloneType)
-
-      val queueDataSelect = Output(Bool())
-      val queueData = Decoupled(pgWrite.io.input.bits.cloneType)
-      val addrIn = Input(pgWrite.io.addr.cloneType)
+      val queueCtl = pg.io.control.cloneType
+      val queueMem = pg.io.memory.cloneType
     }
 
     val io = IO(new TapBlockIO(irLength))
@@ -91,10 +91,11 @@ class top extends Module {
     io.queueCtl.bits := chainCtl.io.update.bits
     io.queueCtl.valid := chainCtl.io.update.valid
 
-    io.queueDataSelect := tapIo.output.instruction === 5.U
-    io.queueData.bits := chainData.io.update.bits
-    io.queueData.valid := chainData.io.update.valid
-    chainData.io.capture.bits := chainData.io.capture.bits.fromBits(io.addrIn)
+    dataStreamer.io.reset := tapIo.output.instruction =/= 5.U
+    io.queueMem.valid := dataStreamer.io.output.valid
+    dataStreamer.io.output.ready := io.queueMem.ready
+    io.queueMem.bits.writeAddr := dataStreamer.io.output.bits.addr
+    io.queueMem.bits.writeData := dataStreamer.io.output.bits.data
   }
 
   // Generate arbitrary number of chained TAPs
@@ -120,18 +121,11 @@ class top extends Module {
   val flip = Reg(Bool(), init=false.B)
   val count = Reg(UInt(8.W), init=0.U)
   // rocket-chip util seem to conflict with chisel3.util
-  taps.head.io.addrIn := pgWrite.io.addr  // TODO: should this have some kind of synchronization?
-  val queueCtl = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queueCtl)
-  val queueData = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queueData)
+  val queueCtl = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queueCtl, 1, 2)
+  val queueMem = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queueMem, 1, 2)
 
-  pgWrite.io.reset := !_root_.util.LevelSyncFrom(taps.head.clock, taps.head.io.queueDataSelect)
-  pgWrite.io.input.bits := queueData.bits
-  pgWrite.io.input.valid := queueData.valid
-  queueData.ready := pgWrite.io.input.ready
-
-  pg.io.control.bits := queueCtl.bits
-  pg.io.control.valid := queueCtl.valid
-  queueCtl.ready := pg.io.control.ready
+  pg.io.control <> queueCtl
+  pg.io.memory <> queueMem
 
   val (cnt, wrap) = Counter(true.B, 12000000)
   val pulse = cnt > (12000000 - 1000000).U
