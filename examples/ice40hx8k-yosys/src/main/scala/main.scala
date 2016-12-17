@@ -56,7 +56,7 @@ class top extends Module {
     val chainCtl = Module(CaptureUpdateChain(pg.io.control.bits.cloneType))
 
     val dataStreamer = Module(new StreamingAddressQueue(pg.io.memory.bits.writeData.cloneType, pg.memDepth))
-    val chainData = Module(CaptureUpdateChain(dataStreamer.io.output.bits.addr.cloneType,
+    val chainData = Module(CaptureUpdateChain(dataStreamer.io.addr.cloneType,
         dataStreamer.io.input.bits.cloneType))
     dataStreamer.io.input.valid := chainData.io.update.valid
     dataStreamer.io.input.bits := chainData.io.update.bits
@@ -94,8 +94,8 @@ class top extends Module {
     dataStreamer.io.reset := tapIo.output.instruction =/= 5.U
     io.queueMem.valid := dataStreamer.io.output.valid
     dataStreamer.io.output.ready := io.queueMem.ready
-    io.queueMem.bits.writeAddr := dataStreamer.io.output.bits.addr
-    io.queueMem.bits.writeData := dataStreamer.io.output.bits.data
+    io.queueMem.bits.writeAddr := dataStreamer.io.addr
+    io.queueMem.bits.writeData := dataStreamer.io.output.bits
   }
 
   // Generate arbitrary number of chained TAPs

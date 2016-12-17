@@ -11,17 +11,11 @@ import chisel3.util._
   * Combinational translation.
   */
 class StreamingAddressQueue[T <: Data](gen: T, count: Int) extends Module {
-  class WithAddress(gen: T) extends Bundle {
-    val addr = UInt(log2Up(count).W)
-    val data = gen
-
-    override def cloneType = (new WithAddress(gen)).asInstanceOf[this.type]
-  }
-
   class ModIO extends Bundle {
     val reset = Input(Bool())  // synchronous address reset
+    val addr = Output(UInt(log2Up(count).W))  // address, of current element
     val input = Flipped(Decoupled(gen))  // data in queue
-    val output = Decoupled(new WithAddress(gen))  // data out queue
+    val output = Decoupled(gen)  // data out queue
 
     override def cloneType = (new ModIO).asInstanceOf[this.type]
   }
@@ -39,8 +33,8 @@ class StreamingAddressQueue[T <: Data](gen: T, count: Int) extends Module {
     }
   }
 
+  io.addr := addr
   io.input.ready := io.output.ready
   io.output.valid := io.input.valid
-  io.output.bits.addr := addr
-  io.output.bits.data := io.input.bits
+  io.output.bits := io.input.bits
 }

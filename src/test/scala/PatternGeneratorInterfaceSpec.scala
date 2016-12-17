@@ -106,18 +106,18 @@ class PatternGeneratorInterfaceSpec extends FlatSpec with PatternGeneratorImplic
       val saq = Module(new StreamingAddressQueue(pg.io.memory.bits.writeData.cloneType, pg.memDepth))
 
       val io = IO(new Bundle {
-        val pgIo = pg.io.cloneType
+        val pgIo = pg.io.chiselCloneType
 
         val saqReset = saq.io.reset.chiselCloneType
         val saqInput = saq.io.input.chiselCloneType
 
-        val saqAddr = saq.io.output.bits.addr.chiselCloneType
+        val saqAddr = Output(saq.io.addr.cloneType)
       })
 
       pg.io.memory.valid := saq.io.output.valid
       saq.io.output.ready := pg.io.memory.ready
-      pg.io.memory.bits.writeAddr := saq.io.output.bits.addr
-      pg.io.memory.bits.writeData := saq.io.output.bits.data
+      pg.io.memory.bits.writeAddr := saq.io.addr
+      pg.io.memory.bits.writeData := saq.io.output.bits
 
       io.pgIo.signal <> pg.io.signal
       io.pgIo.trigger <> pg.io.trigger
@@ -127,7 +127,7 @@ class PatternGeneratorInterfaceSpec extends FlatSpec with PatternGeneratorImplic
       io.saqReset <> saq.io.reset
       io.saqInput <> saq.io.input
 
-      io.saqAddr <> saq.io.output.bits.addr
+      io.saqAddr <> saq.io.addr
     }) {implicit t => c =>
       c.io.pgIo.control.valid <<= false
       c.io.saqReset <<= false
