@@ -1,7 +1,7 @@
 Import('env')
 
-blif = env.Synthesize('top', ['build/top.v', '#../deps/chisel-jtag/external/vsrc/AsyncResetReg.v'])
-asc = env.PlaceRoute(blif, pcf='top.pcf')
+blif = env.Synthesize('top', ['build/Top.v', '#../deps/chisel-jtag/external/vsrc/AsyncResetReg.v'])
+asc = env.PlaceRoute(blif, pcf='ice40hx8k-b-evn.pcf')
 bits = env.BitGen(asc)
 report = env.Timing(asc)
 

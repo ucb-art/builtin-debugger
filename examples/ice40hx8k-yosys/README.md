@@ -1,11 +1,15 @@
 # builtin-debugger demo on iCE40HX8k FPGA
+
 ## Supported Hardware
-FPGAs:
+Dev boards:
 - iCE40HX8K-B-EVN
-- More to come...
 
 JTAG cables:
 - Bus Blaster clone
+
+## Preqreuisites
+
+0. Install IceStorm: follow instructions [here](http://www.clifford.at/icestorm/)
 
 ## Build
 

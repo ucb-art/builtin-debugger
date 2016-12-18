@@ -5,7 +5,7 @@ import chisel3.util._
 import debuggers._
 import jtag._
 
-class top extends Module {
+class Top extends Module {
   class CountIO extends Bundle {
     val count = Output(UInt(32.W))
   }
@@ -149,6 +149,6 @@ class top extends Module {
 
 object Top {
   def main(args: Array[String]): Unit = {
-    Driver.execute(args, () => new top)
+    Driver.execute(args, () => new Top)
   }
 }
