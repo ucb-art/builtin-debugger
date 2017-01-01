@@ -5,7 +5,8 @@ import chisel3.util._
 import debuggers._
 import jtag._
 
-class Top extends Module {
+class DesignTop(modClock: Clock, modReset: Bool)
+      extends Module(override_clock=Some(modClock), override_reset=Some(modReset)) {
   class CountIO extends Bundle {
     val count = Output(UInt(32.W))
   }
@@ -29,7 +30,7 @@ class Top extends Module {
   //
   // TAP blocks
   //
-  class JtagTapClocked (modClock: Clock, modReset: Bool)
+  class JtagTapClocked(modClock: Clock, modReset: Bool)
       extends Module(override_clock=Some(modClock), override_reset=Some(modReset)) {
     val chain0 = Module(CaptureUpdateChain(UInt(8.W)))
     val reg0 = RegEnable(chain0.io.update.bits, 0.U, chain0.io.update.valid)
@@ -123,28 +124,21 @@ class Top extends Module {
   //
   // Timing control
   //
-  val (_, usWrap) = Counter(true.B, 12)
-
   val queuePeriod = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queuePeriod, 1, 2)
   queuePeriod.ready := true.B
-  val usMax = RegEnable(queuePeriod.bits, 1000000.U, queuePeriod.valid)
+  val periodMax = RegEnable(queuePeriod.bits, 1000000.U, queuePeriod.valid)
   
-  val usCounter = Reg(UInt(32.W))
+  val periodCounter = Reg(UInt(24.W))
   val wrap = Wire(Bool())
-  when (usWrap) {
-    when (usCounter >= usMax) {
-      usCounter := 0.U;
-      wrap := true.B
-    } .otherwise {
-      usCounter := usCounter + 1.U;
-      wrap := false.B
-    }
+  when (periodCounter >= periodMax) {
+    periodCounter := 0.U;
+    wrap := true.B
   } .otherwise {
+    periodCounter := periodCounter + 1.U;
     wrap := false.B
   }
   
-  val pulse = usCounter > (usMax - 10000.U)
-  val pgReady = Reg(Bool(), init=false.B)
+  val pulse = periodCounter > (periodMax - 8192.U)
   pg.io.trigger.valid := true.B
   pg.io.trigger.bits := pulse
   pg.io.signal.ready := wrap
@@ -152,9 +146,46 @@ class Top extends Module {
   //
   // Assign outputs
   //
-  io.out0 := Cat(pulse, pgReady, pg.io.signal.valid, 0.U(1.W), pg.io.signal.bits)
+  io.out0 := Cat(pulse, pg.io.signal.valid, 0.U(2.W), pg.io.signal.bits)
   io.out1 := taps.head.io.reg1
   io.out2 := taps.head.io.reg2
+}
+
+class Top extends Module {
+  //
+  // POR Reset Generator
+  //
+  // Clock and reset lines are registered so we have nice, smooth edges.
+  val (clockCnt, clockWrap) = Counter(true.B, 12)
+  val internalClock = Reg(Bool())
+  internalClock := clockCnt < 6.U
+  val resetCnt = Reg(UInt(4.W), init=0.U)
+  val internalReset = Reg(Bool())
+  when (resetCnt < 10.U) {
+    internalReset := true.B
+    when (clockWrap) {
+      resetCnt := resetCnt + 1.U
+    }
+  } .otherwise {
+    internalReset := false.B
+  }
+ 
+  val design = Module(new DesignTop(internalClock.asClock, internalReset))
+  val io = IO(design.io.cloneType)
+  io <> design.io
+  
+  when (internalReset) {
+    design.io.jtag.TCK := internalClock
+    // Use TMS to "initialize" JTAG TAP into Run-Test-Idle state
+    when (resetCnt < 9.U) {
+      design.io.jtag.TMS := true.B
+    } .otherwise {
+      design.io.jtag.TMS := false.B
+    }
+    design.io.jtag.TDI := false.B
+  } .otherwise {
+    design.io.jtag <> io.jtag
+  }
 }
 
 object Top {
