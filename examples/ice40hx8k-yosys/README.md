@@ -33,16 +33,25 @@ Connect to the OpenOCD console:
 telnet localhost 4444
 ```
 
-Load data into the pattern generator memory buffer:
-```
-irscan x.tap 9; drscan x.tap 12 0x05f; drscan x.tap 12 0x10a; drscan x.tap 12 0x25a;
-```
-This loads the pattern 0xF, 0x5, 0xA, 0x0, 0xA, 0x5
+### Blinky example
+Load a new blinky period (in microseconds, example below is 1/4s) to the blinky counter register (idcode 4):
 
-Load data into the pattern generator control line:
 ```
-irscan x.tap 8; drscan x.tap 12 0x42a
+irscan x.tap 4; drscan x.tap 24 250000;
 ```
-(valid not bypassed, negative edge trigger, maxSample of 5, non-continuous, arm, no abort)
 
-The LEDs should blink through the loaded samples.
+### Pattern generator example
+Load data into the pattern generator memory buffer (idcode 9):
+```
+irscan x.tap 9; drscan x.tap 12 0x05f; drscan x.tap 12 0x10a; drscan x.tap 12 0x25a; drscan x.tap 12 0x321; drscan x.tap 12 0x484;
+```
+This loads the pattern 0xF, 0x5, 0xA, 0x0, 0xA, 0x5, 0x1, 0x2, 0x3, 0x4
+
+Load data into the pattern generator control line (idcode 8):
+```
+irscan x.tap 8; drscan x.tap 12 0x42a;
+```
+(ready not bypassed, negative edge trigger, maxSample of 5, non-continuous, arm, no abort) 
+
+### Logic analyzer example
+
