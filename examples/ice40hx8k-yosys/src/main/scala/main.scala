@@ -19,7 +19,7 @@ class Top extends Module {
   }
 
   val io = IO(new ModIO)
-  val irLength = 3
+  val irLength = 4
 
   //
   // System blocks
@@ -31,49 +31,39 @@ class Top extends Module {
   //
   class JtagTapClocked (modClock: Clock, modReset: Bool)
       extends Module(override_clock=Some(modClock), override_reset=Some(modReset)) {
-    val reg0 = Reg(UInt(8.W), init=0x55.U)
-    val reg1 = Reg(UInt(3.W), init=5.U)
-    val reg2 = Reg(UInt(3.W), init=5.U)
+    val chain0 = Module(CaptureUpdateChain(UInt(8.W)))
+    val reg0 = RegEnable(chain0.io.update.bits, 0.U, chain0.io.update.valid)
+    chain0.io.capture.bits := reg0
 
-    val chain1 = Module(CaptureUpdateChain(UInt(8.W)))
-    chain1.io.capture.bits := reg0
-    when (chain1.io.update.valid) {
-      reg0 := chain1.io.update.bits
-    }
-
+    val chain1 = Module(CaptureUpdateChain(UInt(3.W)))
+    val reg1 = RegEnable(chain1.io.update.bits, 1.U, chain1.io.update.valid)
+    chain1.io.capture.bits := reg1
+    
     val chain2 = Module(CaptureUpdateChain(UInt(3.W)))
-    chain2.io.capture.bits := reg1
-    when (chain2.io.update.valid) {
-      reg1 := chain2.io.update.bits
-    }
+    val reg2 = RegEnable(chain2.io.update.bits, 0.U, chain2.io.update.valid)
+    chain2.io.capture.bits := reg2
 
-    val chain3 = Module(CaptureUpdateChain(UInt(3.W)))
-    chain3.io.capture.bits := reg2
-    when (chain3.io.update.valid) {
-      reg2 := chain3.io.update.bits
-    }
-
-    val chainCtl = Module(CaptureUpdateChain(pg.io.control.bits.cloneType))
-
-    val dataStreamer = Module(new StreamingAddressQueue(pg.io.memory.bits.writeData.cloneType, pg.memDepth))
-    val chainData = Module(CaptureUpdateChain(dataStreamer.io.addr.cloneType,
-        dataStreamer.io.input.bits.cloneType))
-    dataStreamer.io.input.valid := chainData.io.update.valid
-    dataStreamer.io.input.bits := chainData.io.update.bits
+    val chainPeriod = Module(CaptureUpdateChain(Bool(), UInt(32.W)))
+        
+    val chainCtl = Module(CaptureUpdateChain(Bool(), pg.io.control.bits.cloneType))
+    val chainMem = Module(CaptureUpdateChain(Bool(), pg.io.memory.bits.cloneType))
 
     val tapIo = JtagTapGenerator(irLength, Map(
-          chain1 -> 1,
-          chain2 -> 2,
-          chain3 -> 3,
-          chainCtl -> 4,
-          chainData -> 5
+          chain0 -> 1,
+          chain1 -> 2,
+          chain2 -> 3,
+          chainPeriod -> 4,
+          
+          chainCtl -> 8,
+          chainMem -> 9
         ),
-        idcode=Some((6, JtagIdcode(0xA, 0x123, 0x42))))
+        idcode=Some((14, JtagIdcode(0xA, 0x123, 0x42))))
 
     class TapBlockIO(irLength: Int) extends JtagBlockIO(irLength) {
       val reg0 = Output(UInt(8.W))
       val reg1 = Output(UInt(3.W))
       val reg2 = Output(UInt(3.W))
+      val queuePeriod = Output(Decoupled(UInt(32.W)))
 
       val queueCtl = pg.io.control.cloneType
       val queueMem = pg.io.memory.cloneType
@@ -87,15 +77,18 @@ class Top extends Module {
     io.reg1 := reg1
     io.reg2 := reg2
 
-    // TODO: some backpressure mechanism
+    io.queuePeriod.bits := chainPeriod.io.update.bits
+    io.queuePeriod.valid := chainPeriod.io.update.valid
+    chainPeriod.io.capture.bits := RegEnable(io.queuePeriod.ready, false.B, chainPeriod.io.update.valid)
+    
+    
     io.queueCtl.bits := chainCtl.io.update.bits
     io.queueCtl.valid := chainCtl.io.update.valid
+    chainCtl.io.capture.bits := RegEnable(io.queueCtl.ready, false.B, chainCtl.io.update.valid)
 
-    dataStreamer.io.reset := tapIo.output.instruction =/= 5.U
-    io.queueMem.valid := dataStreamer.io.output.valid
-    dataStreamer.io.output.ready := io.queueMem.ready
-    io.queueMem.bits.writeAddr := dataStreamer.io.addr
-    io.queueMem.bits.writeData := dataStreamer.io.output.bits
+    io.queueMem.bits := chainMem.io.update.bits
+    io.queueMem.valid := chainMem.io.update.valid
+    chainMem.io.capture.bits := RegEnable(io.queueMem.ready, false.B, chainMem.io.update.valid)
   }
 
   // Generate arbitrary number of chained TAPs
@@ -127,17 +120,34 @@ class Top extends Module {
   pg.io.control <> queueCtl
   pg.io.memory <> queueMem
 
-  val (cnt, wrap) = Counter(true.B, 12000000)
-  val pulse = cnt > (12000000 - 1000000).U
+  //
+  // Timing control
+  //
+  val (_, usWrap) = Counter(true.B, 12)
+
+  val queuePeriod = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queuePeriod, 1, 2)
+  queuePeriod.ready := true.B
+  val usMax = RegEnable(queuePeriod.bits, 1000000.U, queuePeriod.valid)
+  
+  val usCounter = Reg(UInt(32.W))
+  val wrap = Wire(Bool())
+  when (usWrap) {
+    when (usCounter >= usMax) {
+      usCounter := 0.U;
+      wrap := true.B
+    } .otherwise {
+      usCounter := usCounter + 1.U;
+      wrap := false.B
+    }
+  } .otherwise {
+    wrap := false.B
+  }
+  
+  val pulse = usCounter > (usMax - 10000.U)
   val pgReady = Reg(Bool(), init=false.B)
   pg.io.trigger.valid := true.B
   pg.io.trigger.bits := pulse
-  pg.io.signal.ready := pgReady
-  when (wrap && pg.io.signal.valid) {
-    pgReady := true.B
-  } .elsewhen (pg.io.signal.valid) {
-    pgReady := false.B
-  }
+  pg.io.signal.ready := wrap
 
   //
   // Assign outputs
