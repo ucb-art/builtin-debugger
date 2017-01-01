@@ -47,7 +47,12 @@ class DesignTop(modClock: Clock, modReset: Bool)
     val chainPgMem = Module(CaptureUpdateChain(Bool(), pg.io.memory.bits.cloneType))
     
     val chainLaCtl = Module(CaptureUpdateChain(Bool(), la.io.control.bits.cloneType))
-    val chainLaMem = Module(CaptureUpdateChain(la.io.memory.respData.cloneType,
+    class LaMemRespCapture extends Bundle {
+      val updateReady = Bool()
+      val captureValid = Bool()
+      val bits = la.io.memory.respData.cloneType
+    }
+    val chainLaMem = Module(CaptureUpdateChain(new LaMemRespCapture(),
         la.io.memory.reqAddr.cloneType))
     
     val tapIo = JtagTapGenerator(irLength, Map(
@@ -105,7 +110,9 @@ class DesignTop(modClock: Clock, modReset: Bool)
     
     io.queueLaMemReq.bits := chainLaMem.io.update.bits
     io.queueLaMemReq.valid := chainLaMem.io.update.valid
-    chainLaMem.io.capture.bits := io.queueLaMemResp.bits
+    chainLaMem.io.capture.bits.updateReady := RegEnable(io.queueLaMemReq.ready, false.B, chainLaMem.io.update.valid)
+    chainLaMem.io.capture.bits.captureValid := io.queueLaMemResp.valid 
+    chainLaMem.io.capture.bits.bits := io.queueLaMemResp.bits
     io.queueLaMemResp.ready := chainLaMem.io.capture.capture
   }
 
@@ -131,9 +138,9 @@ class DesignTop(modClock: Clock, modReset: Bool)
   //
   val (prescaleCnt, prescaleWrap) = Counter(true.B, 1000)
   
-  val queuePeriod = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queuePeriod, 1, 2)
+  val queuePeriod = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queuePeriod, 1, 3)
   queuePeriod.ready := true.B
-  val periodMax = RegEnable(queuePeriod.bits, 1000.U, queuePeriod.valid)
+  val periodMax = RegEnable(queuePeriod.bits, 500.U, queuePeriod.valid)
   
   val periodCounter = Reg(UInt(16.W))
   val wrap = Wire(Bool())
@@ -155,30 +162,63 @@ class DesignTop(modClock: Clock, modReset: Bool)
   // Pattern Generator Interface
   //
   // rocket-chip util seem to conflict with chisel3.util
-  val queuePgCtl = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queuePgCtl, 1, 2)
-  val queuePgMem = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queuePgMem, 1, 2)
+  val queuePgCtl = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queuePgCtl, 1, 3)
+  val queuePgMem = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queuePgMem, 1, 3)
 
   pg.io.control <> queuePgCtl
   pg.io.memory <> queuePgMem
 
   pg.io.trigger.valid := true.B
-  pg.io.trigger.bits := pulse
+  pg.io.trigger.bits := wrap
   pg.io.signal.ready := wrap
 
   //
   // Logic Analyzer Interface
   //
-  val queueLaCtl = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queueLaCtl, 1, 2)
-  val queueLaMemReq = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queueLaMemReq, 1, 2)
+  val queueLaCtl = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queueLaCtl, 1, 3)
+  val queueLaMemReq = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queueLaMemReq, 1, 3)
   val queueLaMemResp = Wire(taps.head.io.queueLaMemResp.cloneType)
-  taps.head.io.queueLaMemResp <> _root_.util.AsyncDecoupledTo(taps.head.clock, taps.head.reset, queueLaMemResp, 1, 2)
-  
+    
   la.io.control <> queueLaCtl
+  la.io.memory.reqAddr := queueLaMemReq.bits
+  
+  // Sequence the request and response queues such that the request queue isn't drained until
+  // the response queue is drained.
+  val respSeq = Reg(UInt(2.W), init=0.U)
+  when (respSeq === 1.U) {  // wait to enqueue response
+    queueLaMemReq.ready := false.B
+    queueLaMemResp.valid := true.B
+    when (queueLaMemResp.ready) {
+      respSeq := 2.U
+    }
+  } .elsewhen (respSeq === 2.U) {  // wait to dequeue request
+    queueLaMemReq.ready := queueLaMemResp.ready
+    queueLaMemResp.valid := false.B
+    when (queueLaMemResp.ready) {
+      respSeq := 0.U
+    }
+  } .otherwise {  // idle
+    queueLaMemReq.ready := false.B
+    queueLaMemResp.valid := false.B
+    when (queueLaMemReq.valid) {
+      respSeq := 1.U
+    }
+  }
+  queueLaMemResp.bits := la.io.memory.respData
+  
+  val tapQueueLaMemResp = _root_.util.AsyncDecoupledTo(taps.head.clock, taps.head.reset, queueLaMemResp, 1, 3)
+  taps.head.io.queueLaMemResp <> tapQueueLaMemResp
+  
+  la.io.trigger.valid := true.B
+  la.io.trigger.bits := wrap
+  la.io.signal.bits := pg.io.signal.bits
+  la.io.signal.valid := wrap
   
   //
   // Assign outputs
   //
-  io.out0 := Cat(pulse, pg.io.signal.valid, 0.U(2.W), pg.io.signal.bits)
+  io.out0 := Cat(pulse, pg.io.signal.valid, la.io.status.state =/= 0.U, tapQueueLaMemResp.valid, // 0.U(1.W),
+      pg.io.signal.bits)
   io.out1 := taps.head.io.reg1
   io.out2 := taps.head.io.reg2
 }
@@ -188,12 +228,18 @@ class Top extends Module {
   // POR Reset Generator
   //
   // Clock and reset lines are registered so we have nice, smooth edges.
-  val (clockCnt, clockWrap) = Counter(true.B, 12)
-  val internalClock = Reg(Bool())
-  internalClock := clockCnt < 6.U
-  val resetCnt = Reg(UInt(4.W), init=0.U)
+  val clockPrescale = 12
+  require(clockPrescale % 2 == 0)
+  val resetCycles = 20
+  
+  val (_, clockWrap) = Counter(true.B, clockPrescale / 2)
+  val internalClock = Reg(Bool(), init=false.B)
+  when (clockWrap) {
+    internalClock := !internalClock
+  }
+  val resetCnt = Reg(UInt(log2Up(resetCycles*2+1).W), init=0.U)
   val internalReset = Reg(Bool())
-  when (resetCnt < 10.U) {
+  when (resetCnt < resetCycles.asUInt) {
     internalReset := true.B
     when (clockWrap) {
       resetCnt := resetCnt + 1.U
@@ -209,7 +255,7 @@ class Top extends Module {
   when (internalReset) {
     design.io.jtag.TCK := internalClock
     // Use TMS to "initialize" JTAG TAP into Run-Test-Idle state
-    when (resetCnt < 9.U) {
+    when (resetCnt < (resetCycles-1).asUInt) {
       design.io.jtag.TMS := true.B
     } .otherwise {
       design.io.jtag.TMS := false.B
