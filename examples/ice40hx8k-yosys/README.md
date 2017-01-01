@@ -34,10 +34,10 @@ telnet localhost 4444
 ```
 
 ### Blinky example
-Load a new blinky period (in microseconds, example below is 1/4s) to the blinky counter register (idcode 4):
+Load a new blinky period (in milliseconds, example below is 1/4s) to the blinky counter register (idcode 4):
 
 ```
-irscan x.tap 4; drscan x.tap 24 250000;
+irscan x.tap 4; drscan x.tap 16 250;
 ```
 
 ### Pattern generator example
