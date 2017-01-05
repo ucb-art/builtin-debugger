@@ -24,7 +24,7 @@ Optionally, use `scons prog` if you have the FPGA attached. Default is to progra
 
 ## Using
 ### Hardware Setup
-The pinout of the USB Blaster is (facing towards the USB blaster header):
+The pinout of the USB Blaster is (facing towards the USB blaster header pins):
 
 ```
          Notch
@@ -40,7 +40,7 @@ E16  NC   D16  F16  C16
 GND  NC   NC   TP11 GND
 ```
 
-Some USB Blasters require external voltage in. TP11 on the FPGA board is a 3.3v connection tied to VccIO. Only one GND needs to be connected.
+Some USB Blasters require external voltage in. TP11 on the FPGA board is a 3.3v line tied to VccIO. Only one GND needs to be connected.
 
 ### OpenOCD
 Start OpenOCD and reset the JTAG TAP:
@@ -87,4 +87,4 @@ runtest 10; drscan x.tap 10 1
 runtest 10; drscan x.tap 10 2
 ...
 ```
-This scans in the address for the memory request, the response for which can be read out on the next capture. The response is of the format (last request ready, this response valid, memory line bits). The `runtest` allows time for the pattern generator to process the request and for the response to propagate back to the JTAG block.
+This scans in the address for the memory request, the response for which can be read out on the next capture. The response is of the format (last request ready, this response valid, memory line bits). The `runtest` allows time for the logic analyzer to process the request and for the response to propagate back to the JTAG block.
