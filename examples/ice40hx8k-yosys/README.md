@@ -5,7 +5,7 @@ Dev boards:
 - iCE40HX8K-B-EVN
 
 JTAG cables:
-- Bus Blaster clone
+- USB Blaster clone
 
 ## Preqreuisites
 
@@ -18,11 +18,31 @@ sbt "run -td build"
 scons
 ```
 
-Optionally, use `scons prog` if you have the FPGA attached. Default is to program SRAM.
+Optionally, use `scons prog` if you have the FPGA attached. Default is to program SRAM. This may need to be invoked with `sudo`.
 
 *Important*: `scons` does NOT invoke sbt or re-generate Verilog, it only builds bitfiles from generated Verilog.
 
 ## Using
+### Hardware Setup
+The pinout of the USB Blaster is (facing towards the USB blaster header):
+
+```
+         Notch
+TDI  NC   TMS  TDO  TCK
+GND  NC   NC   Vcc  GND
+```
+
+The JTAG pin allocation on the FPGA side is defined in [ice40hx8k-b-evn.pcf](ice40hx8k-b-evn.pcf), so connect the USB blaster pins to these FPGA pins:
+
+```
+         Notch
+E16  NC   D16  F16  C16
+GND  NC   NC   TP11 GND
+```
+
+Some USB Blasters require external voltage in. TP11 on the FPGA board is a 3.3v connection tied to VccIO. Only one GND needs to be connected.
+
+### OpenOCD
 Start OpenOCD and reset the JTAG TAP:
 ```
 openocd -f interface/altera-usb-blaster.cfg -c "jtag newtap x tap -irlen 4 -expected-id 0xa0123085" -c init -c "jtag_reset 0 0"
@@ -51,7 +71,7 @@ Load data into the pattern generator control line (idcode 8):
 ```
 irscan x.tap 8; drscan x.tap 12 0x44a;
 ```
-(0b0 100 01001 0 1 0 = 0x44a ready not bypassed, negative edge trigger, maxSample of 9, non-continuous, arm, no abort) 
+(0b0 100 01001 0 1 0 = 0x44a ready not bypassed, negative edge trigger, maxSample of 9, non-continuous, arm, no abort)
 
 ### Logic analyzer example
 Load data into the logic analyzer control line (idcode 10):
