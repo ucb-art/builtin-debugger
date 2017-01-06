@@ -36,16 +36,16 @@ class DesignTop(modClock: Clock, modReset: Bool)
     val chain1 = Module(CaptureUpdateChain(UInt(3.W)))
     val reg1 = RegEnable(chain1.io.update.bits, 1.U, chain1.io.update.valid)
     chain1.io.capture.bits := reg1
-    
+
     val chain2 = Module(CaptureUpdateChain(UInt(3.W)))
     val reg2 = RegEnable(chain2.io.update.bits, 0.U, chain2.io.update.valid)
     chain2.io.capture.bits := reg2
 
     val chainPeriod = Module(CaptureUpdateChain(Bool(), UInt(16.W)))
-        
+
     val chainPgCtl = Module(CaptureUpdateChain(Bool(), pg.io.control.bits.cloneType))
     val chainPgMem = Module(CaptureUpdateChain(Bool(), pg.io.memory.bits.cloneType))
-    
+
     val chainLaCtl = Module(CaptureUpdateChain(Bool(), la.io.control.bits.cloneType))
     class LaMemRespCapture extends Bundle {
       val updateReady = Bool()
@@ -54,16 +54,16 @@ class DesignTop(modClock: Clock, modReset: Bool)
     }
     val chainLaMem = Module(CaptureUpdateChain(new LaMemRespCapture(),
         la.io.memory.reqAddr.cloneType))
-    
+
     val tapIo = JtagTapGenerator(irLength, Map(
           chain0 -> 1,
           chain1 -> 2,
           chain2 -> 3,
           chainPeriod -> 4,
-          
+
           chainPgCtl -> 8,
           chainPgMem -> 9,
-          
+
           chainLaCtl -> 10,
           chainLaMem -> 11
         ),
@@ -77,7 +77,7 @@ class DesignTop(modClock: Clock, modReset: Bool)
 
       val queuePgCtl = pg.io.control.cloneType
       val queuePgMem = pg.io.memory.cloneType
-      
+
       val queueLaCtl = la.io.control.cloneType
       val queueLaMemReq = Decoupled(la.io.memory.reqAddr.cloneType)
       val queueLaMemResp = Flipped(Decoupled(la.io.memory.respData.cloneType))
@@ -94,8 +94,8 @@ class DesignTop(modClock: Clock, modReset: Bool)
     io.queuePeriod.bits := chainPeriod.io.update.bits
     io.queuePeriod.valid := chainPeriod.io.update.valid
     chainPeriod.io.capture.bits := RegEnable(io.queuePeriod.ready, false.B, chainPeriod.io.update.valid)
-    
-    
+
+
     io.queuePgCtl.bits := chainPgCtl.io.update.bits
     io.queuePgCtl.valid := chainPgCtl.io.update.valid
     chainPgCtl.io.capture.bits := RegEnable(io.queuePgCtl.ready, false.B, chainPgCtl.io.update.valid)
@@ -103,15 +103,15 @@ class DesignTop(modClock: Clock, modReset: Bool)
     io.queuePgMem.bits := chainPgMem.io.update.bits
     io.queuePgMem.valid := chainPgMem.io.update.valid
     chainPgMem.io.capture.bits := RegEnable(io.queuePgMem.ready, false.B, chainPgMem.io.update.valid)
-    
+
     io.queueLaCtl.bits := chainLaCtl.io.update.bits
     io.queueLaCtl.valid := chainLaCtl.io.update.valid
     chainLaCtl.io.capture.bits := RegEnable(io.queueLaCtl.ready, false.B, chainLaCtl.io.update.valid)
-    
+
     io.queueLaMemReq.bits := chainLaMem.io.update.bits
     io.queueLaMemReq.valid := chainLaMem.io.update.valid
     chainLaMem.io.capture.bits.updateReady := RegEnable(io.queueLaMemReq.ready, false.B, chainLaMem.io.update.valid)
-    chainLaMem.io.capture.bits.captureValid := io.queueLaMemResp.valid 
+    chainLaMem.io.capture.bits.captureValid := io.queueLaMemResp.valid
     chainLaMem.io.capture.bits.bits := io.queueLaMemResp.bits
     io.queueLaMemResp.ready := chainLaMem.io.capture.capture
   }
@@ -137,11 +137,11 @@ class DesignTop(modClock: Clock, modReset: Bool)
   // Timing control
   //
   val (prescaleCnt, prescaleWrap) = Counter(true.B, 1000)
-  
-  val queuePeriod = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queuePeriod, 1, 3)
+
+  val queuePeriod = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queuePeriod, 1)
   queuePeriod.ready := true.B
   val periodMax = RegEnable(queuePeriod.bits, 500.U, queuePeriod.valid)
-  
+
   val periodCounter = Reg(UInt(16.W))
   val wrap = Wire(Bool())
   when (prescaleWrap) {
@@ -155,15 +155,15 @@ class DesignTop(modClock: Clock, modReset: Bool)
   } .otherwise {
     wrap := false.B
   }
-  
+
   val pulse = periodCounter > (periodMax - 16.U)
-  
+
   //
   // Pattern Generator Interface
   //
   // rocket-chip util seem to conflict with chisel3.util
-  val queuePgCtl = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queuePgCtl, 1, 3)
-  val queuePgMem = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queuePgMem, 1, 3)
+  val queuePgCtl = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queuePgCtl, 1)
+  val queuePgMem = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queuePgMem, 1)
 
   pg.io.control <> queuePgCtl
   pg.io.memory <> queuePgMem
@@ -175,13 +175,13 @@ class DesignTop(modClock: Clock, modReset: Bool)
   //
   // Logic Analyzer Interface
   //
-  val queueLaCtl = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queueLaCtl, 1, 3)
-  val queueLaMemReq = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queueLaMemReq, 1, 3)
+  val queueLaCtl = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queueLaCtl, 1)
+  val queueLaMemReq = _root_.util.AsyncDecoupledFrom(taps.head.clock, taps.head.reset, taps.head.io.queueLaMemReq, 1)
   val queueLaMemResp = Wire(taps.head.io.queueLaMemResp.cloneType)
-    
+
   la.io.control <> queueLaCtl
   la.io.memory.reqAddr := queueLaMemReq.bits
-  
+
   // Sequence the request and response queues such that the request queue isn't drained until
   // the response queue is drained.
   val respSeq = Reg(UInt(2.W), init=0.U)
@@ -205,15 +205,15 @@ class DesignTop(modClock: Clock, modReset: Bool)
     }
   }
   queueLaMemResp.bits := la.io.memory.respData
-  
-  val tapQueueLaMemResp = _root_.util.AsyncDecoupledTo(taps.head.clock, taps.head.reset, queueLaMemResp, 1, 3)
+
+  val tapQueueLaMemResp = _root_.util.AsyncDecoupledTo(taps.head.clock, taps.head.reset, queueLaMemResp, 1)
   taps.head.io.queueLaMemResp <> tapQueueLaMemResp
-  
+
   la.io.trigger.valid := true.B
   la.io.trigger.bits := wrap
   la.io.signal.bits := pg.io.signal.bits
   la.io.signal.valid := wrap
-  
+
   //
   // Assign outputs
   //
@@ -231,7 +231,7 @@ class Top extends Module {
   val clockPrescale = 12
   require(clockPrescale % 2 == 0)
   val resetCycles = 20
-  
+
   val (_, clockWrap) = Counter(true.B, clockPrescale / 2)
   val internalClock = Reg(Bool(), init=false.B)
   when (clockWrap) {
@@ -247,11 +247,11 @@ class Top extends Module {
   } .otherwise {
     internalReset := false.B
   }
- 
+
   val design = Module(new DesignTop(internalClock.asClock, internalReset))
   val io = IO(design.io.cloneType)
   io <> design.io
-  
+
   when (internalReset) {
     design.io.jtag.TCK := internalClock
     // Use TMS to "initialize" JTAG TAP into Run-Test-Idle state
