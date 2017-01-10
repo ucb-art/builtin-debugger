@@ -7,4 +7,7 @@ report = env.Timing(asc)
 
 env.Default(bits, report)
 
-env.Alias('prog', [env.BitProg(bits), report])
+env.Alias('prog', [env.BitProg('prog', bits), report])
+env_sram = env.Clone()
+env_sram.Append(BITPROGOPTS = '-S')
+env.Alias('prog-sram', [env_sram.BitProg('prog-sram', bits), report])
