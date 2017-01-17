@@ -56,16 +56,17 @@ class DesignTop(modClock: Clock, modReset: Bool)
         la.io.memory.reqAddr.cloneType))
 
     val tapIo = JtagTapGenerator(irLength, Map(
-          chain0 -> 1,
-          chain1 -> 2,
-          chain2 -> 3,
-          chainPeriod -> 4,
+          0 -> chain0,
+          1 -> chain0,
+          2 -> chain1,
+          3 -> chain2,
+          4 -> chainPeriod,
 
-          chainPgCtl -> 8,
-          chainPgMem -> 9,
+          8 -> chainPgCtl,
+          9 -> chainPgMem,
 
-          chainLaCtl -> 10,
-          chainLaMem -> 11
+          10 -> chainLaCtl,
+          11 -> chainLaMem
         ),
         idcode=Some((14, JtagIdcode(0xA, 0x123, 0x42))))
 

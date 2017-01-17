@@ -18,7 +18,7 @@ sbt "run -td build"
 scons
 ```
 
-Optionally, use `scons prog` if you have the FPGA attached. Default is to program SRAM. This may need to be invoked with `sudo`.
+Optionally, use `scons prog` if you have the FPGA attached. Default is to program flash, though you can use `scons prog-sram` if you have a properly configured iCE40HX8K-B-EVN. This may need to be invoked with `sudo`.
 
 *Important*: `scons` does NOT invoke sbt or re-generate Verilog, it only builds bitfiles from generated Verilog.
 
