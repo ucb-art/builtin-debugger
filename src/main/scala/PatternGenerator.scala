@@ -11,6 +11,9 @@ import chisel3.util._
   * @param lineWidth how many dataWidth bits can be set at once; width of the internal buffer
   * @param samples number of samples that can be stored in memory, must be an integer multiple of
   * lineWidth
+  * @param combinationalTrigger whether output is valid on the same cycle trigger is asserted.
+  * This option adds a single cycle state, Arming, between the Idle and Armed states to allow the
+  * first sample to be read. Trigger is ignored in the Arming state.
   */
 class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
     combinationalTrigger: Boolean = true) extends Module {
@@ -23,7 +26,7 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
   val reqAddrWidth = log2Up(memDepth)
 
   // TODO: DRYify
-  val sIdle :: sArmed :: sRunning :: Nil = Enum(3)
+  val sIdle :: sArming :: sArmed :: sRunning :: Nil = Enum(4)
   val stateWidth = log2Up(3)
 
   //
@@ -236,7 +239,11 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
     nextState := sIdle
     started := started || combinationalTriggerFire
   } .elsewhen (state === sIdle && io.control.bits.arm && io.control.valid) {
-    nextState := sArmed
+    if (combinationalTrigger) {
+      nextState := sArming
+    } else {
+      nextState := sArmed
+    }
     confReadyBypass := io.control.bits.readyBypass
     confTriggerMode := io.control.bits.triggerMode
     confLastSample := io.control.bits.lastSample
@@ -244,6 +251,11 @@ class PatternGenerator(dataWidth: Int, lineWidth: Int, samples: Int,
     currSample := 0.U
     overflow := false.B
     started := false.B
+  } .elsewhen (state === sArming) {
+    nextState := sArmed
+    if (!combinationalTrigger) {
+      assert(false.B, "should not enter Arming state with noncombinational trigger")
+    }
   } .elsewhen (state === sArmed && triggerModule.io.triggered) {
     nextState := sRunning
     started := true.B

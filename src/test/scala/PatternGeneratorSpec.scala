@@ -15,7 +15,7 @@ import TriggerMode.TriggerModeType
 // TODO: dedup with LASpec
 object PatternGeneratorState extends Enumeration {  // TODO: DRYify
   type PatternGeneratorStateType = Value
-  val Idle, Armed, Running = Value
+  val Idle, Arming, Armed, Running = Value
 }
 import PatternGeneratorState.PatternGeneratorStateType
 
@@ -61,7 +61,6 @@ trait PatternGeneratorTestUtils extends PeekPokeTester[PatternGenerator] {
     poke(c.io.control.valid, 1)
     step(1)
     poke(c.io.control.valid, 0)
-    expect(c.io.status.state, PatternGeneratorState.Armed.id, "pattern generator did not arm")
   }
 
   def generatorStep(expectedState: PatternGeneratorStateType, expectedSignal: Option[Int],
@@ -270,6 +269,21 @@ class PatternGeneratorNoncombinationalTriggerTester(val c: PatternGenerator) ext
   generatorStep(PatternGeneratorState.Running, Some(4), 3)
   generatorStep(PatternGeneratorState.Idle, None, Overflow(0))
 
+  // Trigger-as-soon-as-possible test
+  arm(false, TriggerMode.High,
+      List(
+        List(1),
+        List(2),
+        List(3),
+        List(4)
+      ), false)
+  generatorStep(PatternGeneratorState.Armed, None, NotStarted, trigger=THigh)
+  generatorStep(PatternGeneratorState.Running, Some(1), 0)
+  generatorStep(PatternGeneratorState.Running, Some(2), 1)
+  generatorStep(PatternGeneratorState.Running, Some(3), 2)
+  generatorStep(PatternGeneratorState.Running, Some(4), 3)
+  generatorStep(PatternGeneratorState.Idle, None, Overflow(0))
+  
   // Pre-trigger abort
   arm(true, TriggerMode.High,
       List(
@@ -295,6 +309,7 @@ class PatternGeneratorCombinationalTriggerTester(val c: PatternGenerator) extend
         List(3),
         List(4)
       ), false)
+  generatorStep(PatternGeneratorState.Arming, None, NotStarted)
   generatorStep(PatternGeneratorState.Armed, None, NotStarted, trigger=TInvLow)  // disabled trigger
   generatorStep(PatternGeneratorState.Armed, None, NotStarted, trigger=TInvHigh)  // "false" trigger
   generatorStep(PatternGeneratorState.Armed, Some(1), 0, trigger=THigh)
@@ -303,6 +318,21 @@ class PatternGeneratorCombinationalTriggerTester(val c: PatternGenerator) extend
   generatorStep(PatternGeneratorState.Running, Some(4), 3)
   generatorStep(PatternGeneratorState.Idle, None, Overflow(0))
 
+  // Trigger-as-soon-as-possible test
+  arm(false, TriggerMode.High,
+      List(
+        List(1),
+        List(2),
+        List(3),
+        List(4)
+      ), false)
+  generatorStep(PatternGeneratorState.Arming, None, NotStarted, trigger=THigh)  // ignored in Arming
+  generatorStep(PatternGeneratorState.Armed, Some(1), 0, trigger=THigh)
+  generatorStep(PatternGeneratorState.Running, Some(2), 1)
+  generatorStep(PatternGeneratorState.Running, Some(3), 2)
+  generatorStep(PatternGeneratorState.Running, Some(4), 3)
+  generatorStep(PatternGeneratorState.Idle, None, Overflow(0))
+  
   // Pre-trigger abort
   arm(true, TriggerMode.High,
       List(
@@ -311,6 +341,7 @@ class PatternGeneratorCombinationalTriggerTester(val c: PatternGenerator) extend
         List(3),
         List(4)
       ), false)
+  generatorStep(PatternGeneratorState.Arming, None, NotStarted)
   generatorStep(PatternGeneratorState.Armed, None, NotStarted)
   generatorStep(PatternGeneratorState.Armed, None, NotStarted)
   poke(c.io.control.bits.abort, true)

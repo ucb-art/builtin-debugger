@@ -40,7 +40,6 @@ trait LogicAnalyzerTestUtils extends PeekPokeTester[LogicAnalyzer] {
     poke(c.io.control.valid, 1)
     step(1)
     poke(c.io.control.valid, 0)
-    expect(c.io.status.state, AnalyzerState.Armed.id, "logic analyzer did not arm")
   }
 
   def analyzerStep(expectedState: AnalyzerStateType, expectedSampled: Int,
