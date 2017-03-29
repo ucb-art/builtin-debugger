@@ -2,7 +2,7 @@ package debuggersExamples
 
 import chisel3._
 import chisel3.util._
-import chisel3.experimental.{withClockAndReset}
+import chisel3.experimental.{withClockAndReset, chiselName}
 import debuggers._
 import jtag._
 
@@ -14,6 +14,7 @@ class DesignIO extends Bundle {
   val out2 = Output(UInt(3.W))
 }
 
+@chiselName
 class DesignTop extends Module {
   val io = IO(new DesignIO)
   val irLength = 4
@@ -32,12 +33,12 @@ class DesignTop extends Module {
   // Timing control
   //
   val (prescaleCnt, prescaleWrap) = Counter(true.B, 1000)
-
-  val queuePeriod = Wire(Decoupled(prescaleCnt.cloneType))
+  val periodCounter = Reg(UInt(16.W))
+  
+  val queuePeriod = Wire(Decoupled(periodCounter.chiselCloneType))
   queuePeriod.ready := true.B
   val periodMax = RegEnable(queuePeriod.bits, 500.U, queuePeriod.valid)
 
-  val periodCounter = Reg(UInt(16.W))
   val wrap = Wire(Bool())
   when (prescaleWrap) {
     when (periodCounter >= periodMax) {
@@ -120,19 +121,19 @@ class DesignTop extends Module {
     chain2val := chain2reg
 
     val chainPeriod = Module(new DecoupledSourceChain(queuePeriod.bits.cloneType))
-    queuePeriod <> _root_.util.AsyncDecoupledTo(clock, reset, chainPeriod.io.interface, 1)
+    queuePeriod <> _root_.util.AsyncDecoupledTo(clock, reset, chainPeriod.io.interface, 2)
 
     val chainPgCtl = Module(new DecoupledSourceChain(pg.io.control.bits.cloneType))
-    pg.io.control <> _root_.util.AsyncDecoupledTo(clock, reset, chainPgCtl.io.interface, 1)
+    pg.io.control <> _root_.util.AsyncDecoupledTo(clock, reset, chainPgCtl.io.interface, 2)
     val chainPgMem = Module(new DecoupledSourceChain(pg.io.memory.bits.cloneType))
-    pg.io.memory <> _root_.util.AsyncDecoupledTo(clock, reset, chainPgMem.io.interface, 1)
+    pg.io.memory <> _root_.util.AsyncDecoupledTo(clock, reset, chainPgMem.io.interface, 2)
     
     val chainLaCtl = Module(new DecoupledSourceChain(la.io.control.bits.cloneType))
-    la.io.control <> _root_.util.AsyncDecoupledTo(clock, reset, chainLaCtl.io.interface, 1)
+    la.io.control <> _root_.util.AsyncDecoupledTo(clock, reset, chainLaCtl.io.interface, 2)
     val chainLaMemReq = Module(new DecoupledSourceChain(laMemReq.bits.cloneType))
-    laMemReq <> _root_.util.AsyncDecoupledTo(clock, reset, chainLaMemReq.io.interface, 1)
+    laMemReq <> _root_.util.AsyncDecoupledTo(clock, reset, chainLaMemReq.io.interface, 2)
     val chainLaMemResp = Module(new DecoupledSinkChain(laMemResp.bits.cloneType))
-    chainLaMemResp.io.interface <> _root_.util.AsyncDecoupledFrom(clock, reset, laMemResp, 1)
+    chainLaMemResp.io.interface <> _root_.util.AsyncDecoupledFrom(clock, reset, laMemResp, 2)
     
     val tapIo = JtagTapGenerator(irLength, Map(
           0 -> chain0,
@@ -158,12 +159,13 @@ class DesignTop extends Module {
   //
   // Assign outputs
   //
-  io.out0 := Cat(pulse, pg.io.signal.valid, la.io.status.state =/= 0.U, 0.U(1.W),
+  io.out0 := Cat(pulse, pg.io.signal.valid, la.io.status.state =/= 0.U, tapReset,
       pg.io.signal.bits)
   io.out1 := chain1val
-  io.out2 := chain0val
+  io.out2 := chain2val
 }
 
+@chiselName
 class Top extends Module {
   val io = IO(new DesignIO)
   
@@ -194,20 +196,19 @@ class Top extends Module {
   withClockAndReset (internalClock.asClock, internalReset) {
     val design = Module(new DesignTop)
     
+    io <> design.io
+    
+    // POR JTAG by last-connect semantics
     when (internalReset) {
       design.io.jtag.TCK := internalClock
       // Use TMS to "initialize" JTAG TAP into Run-Test-Idle state
-      when (resetCnt < (resetCycles-1).asUInt) {
-        design.io.jtag.TMS := true.B
-      } .otherwise {
+      when (resetCnt === (resetCycles-1).asUInt) {
         design.io.jtag.TMS := false.B
+      } .otherwise {
+        design.io.jtag.TMS := true.B
       }
       design.io.jtag.TDI := false.B
-    } .otherwise {
-      design.io.jtag <> io.jtag
     }
-
-    io <> design.io
   }
 }
 
