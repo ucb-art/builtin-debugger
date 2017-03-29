@@ -11,6 +11,8 @@ resolvers ++= Seq(
   Resolver.sonatypeRepo("releases")
 )
 
+addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full)
+
 libraryDependencies += "edu.berkeley.cs" %% "chisel3" % "3.1-SNAPSHOT"
 
 lazy val chiselDebuggers = RootProject(file("../../"))
