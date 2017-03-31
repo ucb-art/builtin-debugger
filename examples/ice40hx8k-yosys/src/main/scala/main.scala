@@ -12,6 +12,7 @@ class DesignIO extends Bundle {
   val out0 = Output(UInt(8.W))
   val out1 = Output(UInt(3.W))
   val out2 = Output(UInt(3.W))
+  val out3 = Output(UInt(3.W))
 }
 
 @chiselName
@@ -25,10 +26,6 @@ class DesignTop extends Module {
   val pg = Module(new PatternGenerator(4, 2, 32))
   val la = Module(new LogicAnalyzer(4, 2, 32))
 
-  val chain0val = Wire(UInt(8.W))
-  val chain1val = Wire(UInt(3.W))
-  val chain2val = Wire(UInt(3.W))
-  
   //
   // Timing control
   //
@@ -70,33 +67,15 @@ class DesignTop extends Module {
   la.io.signal.bits := pg.io.signal.bits
   la.io.signal.valid := wrap
   
-  // Sequence the request and response queues such that the request queue isn't drained until
-  // the response queue is drained.
   val laMemReq = Wire(Decoupled(la.io.memory.reqAddr.cloneType))
   val laMemResp = Wire(Decoupled(la.io.memory.respData.cloneType))
-  
-  val respSeq = RegInit(UInt(2.W), 0.U)
-  when (respSeq === 1.U) {  // wait to enqueue response
-    laMemReq.ready := false.B
-    laMemResp.valid := true.B
-    when (laMemResp.ready) {
-      respSeq := 2.U
-    }
-  } .elsewhen (respSeq === 2.U) {  // wait to dequeue request
-    laMemReq.ready := laMemResp.ready
-    laMemResp.valid := false.B
-    when (laMemResp.ready) {
-      respSeq := 0.U
-    }
-  } .otherwise {  // idle
-    laMemReq.ready := false.B
-    laMemResp.valid := false.B
-    when (laMemReq.valid) {
-      respSeq := 1.U
-    }
-  }
-  laMemResp.bits := la.io.memory.respData
+
+  val laMemRespValid = RegNext(laMemReq.valid, false.B)
+  laMemReq.ready := true.B
   la.io.memory.reqAddr := laMemReq.bits
+  
+  laMemResp.bits := la.io.memory.respData
+  laMemResp.valid := laMemRespValid
   
   //
   // TAP blocks
@@ -108,21 +87,23 @@ class DesignTop extends Module {
     val chain0 = Module(CaptureUpdateChain(UInt(8.W)))
     val chain0reg = RegEnable(chain0.io.update.bits, 0.U, chain0.io.update.valid)
     chain0.io.capture.bits := chain0reg
-    chain0val := chain0reg
 
     val chain1 = Module(CaptureUpdateChain(UInt(3.W)))
     val chain1reg = RegEnable(chain1.io.update.bits, 1.U, chain1.io.update.valid)
     chain1.io.capture.bits := chain1reg
-    chain1val := chain1reg
 
     val chain2 = Module(CaptureUpdateChain(UInt(3.W)))
     val chain2reg = RegEnable(chain2.io.update.bits, 0.U, chain2.io.update.valid)
     chain2.io.capture.bits := chain2reg
-    chain2val := chain2reg
 
     val chainPeriod = Module(new DecoupledSourceChain(queuePeriod.bits.cloneType))
     queuePeriod <> _root_.util.AsyncDecoupledTo(clock, reset, chainPeriod.io.interface, 2)
 
+    val chainSource = Module(new DecoupledSourceChain(UInt(8.W)))
+    val queue = Queue(chainSource.io.interface, 2)
+    val chainSink = Module(new DecoupledSinkChain(UInt(8.W)))
+    chainSink.io.interface <> queue
+    
     val chainPgCtl = Module(new DecoupledSourceChain(pg.io.control.bits.cloneType))
     pg.io.control <> _root_.util.AsyncDecoupledTo(clock, reset, chainPgCtl.io.interface, 2)
     val chainPgMem = Module(new DecoupledSourceChain(pg.io.memory.bits.cloneType))
@@ -141,6 +122,9 @@ class DesignTop extends Module {
           2 -> chain1,
           3 -> chain2,
           4 -> chainPeriod,
+          
+          5 -> chainSource,
+          6 -> chainSink,
 
           8 -> chainPgCtl,
           9 -> chainPgMem,
@@ -154,6 +138,13 @@ class DesignTop extends Module {
     tapIo.jtag <> io.jtag
     tapReset := tapIo.output.reset
     tapIo.control.fsmAsyncReset := false.B
+    
+    io.out1 := chain1reg
+    io.out2 := chain2reg
+    
+    //io.out2 := Cat(pg.io.control.valid, chainPgCtl.io.interface.valid, chainPgCtl.io.interface.ready)
+    //io.out2 := Cat(chainLaMemResp.io.interface.valid, laMemResp.valid, laMemResp.ready)
+    //io.out2 := Cat(chainSink.io.interface.valid, chainSource.io.interface.valid, chainSource.io.interface.ready)
   }
 
   //
@@ -161,8 +152,8 @@ class DesignTop extends Module {
   //
   io.out0 := Cat(pulse, pg.io.signal.valid, la.io.status.state =/= 0.U, tapReset,
       pg.io.signal.bits)
-  io.out1 := chain1val
-  io.out2 := chain2val
+      
+  io.out3 := Cat(0.U(1.W), reset, clock.asUInt)
 }
 
 @chiselName

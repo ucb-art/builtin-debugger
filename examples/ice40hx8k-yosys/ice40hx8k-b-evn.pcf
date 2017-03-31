@@ -15,6 +15,10 @@ set_io io_out2[0] K15
 set_io io_out2[1] M16
 set_io io_out2[2] N16
 
+set_io io_out3[0] P16
+set_io io_out3[1] P15
+set_io io_out3[2] R15
+
 set_io io_jtag_TCK C16
 set_io io_jtag_TMS D16
 set_io io_jtag_TDI E16
